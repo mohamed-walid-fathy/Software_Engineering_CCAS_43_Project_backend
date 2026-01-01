@@ -1,0 +1,391 @@
+import { supabase } from '../config/supabase.js';
+import { successResponse, errorResponse } from '../utils/response.js';
+
+/**
+ * Register a new user (donor or charity)
+ */
+export const register = async (req, res, next) => {
+  try {
+    const { email, password, userType, accountType, name, phone, description, orgName } = req.body;
+
+    // Accept both userType and accountType
+    const type = userType || accountType;
+
+    if (!email || !password) {
+      return errorResponse(res, 'Email and password are required', null, 400);
+    }
+
+    if (!type || !['donor', 'charity'].includes(type)) {
+      return errorResponse(res, 'userType/accountType must be either "donor" or "charity"', null, 400);
+    }
+
+    if (type === 'donor') {
+      // Check if donor already exists
+      const { data: existingDonor } = await supabase
+        .from('donor')
+        .select('email')
+        .eq('email', email)
+        .single();
+
+      if (existingDonor) {
+        return errorResponse(res, 'Email already registered', null, 400);
+      }
+
+      // Create donor with plain password
+      const { data: donor, error: donorError } = await supabase
+        .from('donor')
+        .insert({
+          email,
+          password,  // ⚠️ Storing plain password
+          name: name || '',
+          phone: phone || null
+        })
+        .select()
+        .single();
+
+      if (donorError) {
+        console.error('Donor creation error:', donorError);
+        return errorResponse(res, 'Failed to create donor account', donorError.message, 500);
+      }
+
+      // Don't return password in response
+      delete donor.password;
+
+      return successResponse(
+        res,
+        {
+          user: donor,
+          role: 'donor'
+        },
+        'Donor registered successfully',
+        201
+      );
+
+    } else if (type === 'charity') {
+      // Check if charity already exists
+      const { data: existingCharity } = await supabase
+        .from('Charity')
+        .select('email')
+        .eq('email', email)
+        .single();
+
+      if (existingCharity) {
+        return errorResponse(res, 'Email already registered', null, 400);
+      }
+
+      // Create charity
+      const { data: charity, error: charityError } = await supabase
+        .from('Charity')
+        .insert({
+          email,
+          name: orgName || name || '',
+          description: description || null,
+          'Verified Status': false
+        })
+        .select()
+        .single();
+
+      if (charityError) {
+        console.error('Charity creation error:', charityError);
+        return errorResponse(res, 'Failed to create charity account', charityError.message, 500);
+      }
+
+      return successResponse(
+        res,
+        {
+          user: charity,
+          role: 'charity'
+        },
+        'Charity registered successfully',
+        201
+      );
+    }
+
+  } catch (error) {
+    console.error('Registration error:', error);
+    next(error);
+  }
+};
+
+/**
+ * Login user
+ */
+export const login = async (req, res, next) => {
+  try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return errorResponse(res, 'Email and password are required', null, 400);
+    }
+
+    // Check donor table first
+    const { data: donor } = await supabase
+      .from('donor')
+      .select('*')
+      .eq('email', email)
+      .single();
+
+    if (donor) {
+      // Compare plain passwords
+      if (password !== donor.password) {
+        return errorResponse(res, 'Invalid email or password', null, 401);
+      }
+
+      // Don't return password
+      delete donor.password;
+
+      return successResponse(
+        res,
+        {
+          user: {
+            ...donor,
+            role: 'donor'
+          }
+        },
+        'Login successful',
+        200
+      );
+    }
+
+    // Check Charity table
+    const { data: charity } = await supabase
+      .from('Charity')
+      .select('*')
+      .eq('email', email)
+      .single();
+
+    if (charity) {
+      return successResponse(
+        res,
+        {
+          user: {
+            ...charity,
+            role: 'charity'
+          }
+        },
+        'Login successful',
+        200
+      );
+    }
+
+    return errorResponse(res, 'Invalid email or password', null, 401);
+
+  } catch (error) {
+    console.error('Login error:', error);
+    next(error);
+  }
+};
+
+/**
+ * Logout user
+ */
+export const logout = async (req, res, next) => {
+  try {
+    return successResponse(res, null, 'Logout successful', 200);
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Get current user profile
+ */
+export const getCurrentUser = async (req, res, next) => {
+  try {
+    const { email } = req.query;
+
+    if (!email) {
+      return errorResponse(res, 'email is required as query parameter', null, 400);
+    }
+
+    // Check donor table
+    const { data: donor } = await supabase
+      .from('donor')
+      .select('*')
+      .eq('email', email)
+      .single();
+
+    if (donor) {
+      delete donor.password; // Don't return password
+      return successResponse(
+        res,
+        {
+          role: 'donor',
+          profile: donor
+        },
+        'User profile retrieved successfully',
+        200
+      );
+    }
+
+    // Check Charity table
+    const { data: charity } = await supabase
+      .from('Charity')
+      .select('*')
+      .eq('email', email)
+      .single();
+
+    if (charity) {
+      return successResponse(
+        res,
+        {
+          role: 'charity',
+          profile: charity
+        },
+        'User profile retrieved successfully',
+        200
+      );
+    }
+
+    return errorResponse(res, 'User not found', null, 404);
+
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Update user profile
+ */
+export const updateProfile = async (req, res, next) => {
+  try {
+    const { email, ...updates } = req.body;
+
+    if (!email) {
+      return errorResponse(res, 'Email is required', null, 400);
+    }
+
+    // Remove sensitive fields
+    delete updates.password;
+    delete updates.donor_id;
+    delete updates.Charity_id;
+
+    // Try updating donor
+    const { data: donor } = await supabase
+      .from('donor')
+      .select('donor_id')
+      .eq('email', email)
+      .single();
+
+    if (donor) {
+      const { data, error } = await supabase
+        .from('donor')
+        .update(updates)
+        .eq('donor_id', donor.donor_id)
+        .select()
+        .single();
+
+      if (error) {
+        return errorResponse(res, 'Failed to update profile', error.message, 400);
+      }
+
+      delete data.password;
+      return successResponse(res, data, 'Profile updated successfully', 200);
+    }
+
+    // Try updating charity
+    const { data: charity } = await supabase
+      .from('Charity')
+      .select('Charity_id')
+      .eq('email', email)
+      .single();
+
+    if (charity) {
+      const { data, error } = await supabase
+        .from('Charity')
+        .update(updates)
+        .eq('Charity_id', charity.Charity_id)
+        .select()
+        .single();
+
+      if (error) {
+        return errorResponse(res, 'Failed to update profile', error.message, 400);
+      }
+
+      return successResponse(res, data, 'Profile updated successfully', 200);
+    }
+
+    return errorResponse(res, 'User not found', null, 404);
+
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Forgot password - send reset email
+ */
+export const forgotPassword = async (req, res, next) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return errorResponse(res, 'Email is required', null, 400);
+    }
+
+    // For now, just return success
+    // In production, you'd send an email with reset link
+    return successResponse(
+      res,
+      null,
+      'Password reset email sent successfully',
+      200
+    );
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Reset password
+ */
+export const resetPassword = async (req, res, next) => {
+  try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return errorResponse(res, 'Email and password are required', null, 400);
+    }
+
+    // Try updating donor password
+    const { data: donor } = await supabase
+      .from('donor')
+      .select('donor_id')
+      .eq('email', email)
+      .single();
+
+    if (donor) {
+      const { error } = await supabase
+        .from('donor')
+        .update({ password })
+        .eq('donor_id', donor.donor_id);
+
+      if (error) {
+        return errorResponse(res, 'Failed to reset password', error.message, 400);
+      }
+
+      return successResponse(res, null, 'Password reset successfully', 200);
+    }
+
+    return errorResponse(res, 'User not found', null, 404);
+
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Refresh access token
+ */
+export const refreshToken = async (req, res, next) => {
+  try {
+    return successResponse(
+      res,
+      { message: 'Token refresh not implemented for simple auth' },
+      'Not implemented',
+      200
+    );
+  } catch (error) {
+    next(error);
+  }
+};
