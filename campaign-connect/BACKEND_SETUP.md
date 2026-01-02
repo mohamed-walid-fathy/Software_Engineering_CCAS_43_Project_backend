@@ -78,7 +78,7 @@ Create `.env.local`:
 ```env
 JWT_SECRET=your-super-secret-key-here
 DATABASE_URL=your-database-connection-string
-NEXT_PUBLIC_API_URL=http://localhost:3000
+NEXT_PUBLIC_API_URL=http://localhost:5000
 ```
 
 ---

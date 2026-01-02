@@ -11,6 +11,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Checkbox } from "@/components/ui/checkbox";
 import { Heart, Mail, Lock, Eye, EyeOff } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { authApi } from "@/lib/api";
 
 export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
@@ -23,52 +24,116 @@ export default function Login() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsLoading(true);
-
-    try {
-      const response = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ email, password }),
+    
+    // Validation
+    if (!email || !password) {
+      toast({
+        title: "Validation Error",
+        description: "Please enter both email and password",
+        variant: "destructive",
       });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Login failed");
+      return;
+    }
+  
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      toast({
+        title: "Invalid Email",
+        description: "Please enter a valid email address",
+        variant: "destructive",
+      });
+      return;
+    }
+  
+    setIsLoading(true);
+  
+    try {
+      console.log("Attempting login with email:", email);
+      
+      // Call Express backend through api helper
+      const result = await authApi.login(email, password);
+  
+      console.log("Full login result:", JSON.stringify(result, null, 2));
+      console.log("result.data:", result.data);
+  
+      if (result.error) {
+        throw new Error(result.error);
       }
-
+  
+      // ✅ FIX: Backend returns { data: { user: {...} } }
+      const userData = result.data?.data?.user || result.data?.user;
+      
+      console.log("Extracted userData:", userData);
+  
+      if (!userData) {
+        console.error("No user data found. Full result:", result);
+        throw new Error("No user data returned from server");
+      }
+  
       toast({
         title: "Login Successful",
-        description: "Welcome back to GiveHope!",
+        description: `Welcome back, ${userData.name || 'User'}!`,
       });
-
-      // Store user data in localStorage (or use a better state management solution)
-      if (data.data?.user) {
-        localStorage.setItem("user", JSON.stringify(data.data.user));
+  
+      // Store user data in localStorage
+      const userToStore = {
+        ...userData,
+        email: userData.email,
+        role: userData.role || 'donor',
+        donor_id: userData.donor_id,
+        name: userData.name
+      };
+  
+      console.log("Storing user:", userToStore);
+  
+      localStorage.setItem("user", JSON.stringify(userToStore));
+      
+      if (rememberMe) {
+        localStorage.setItem("rememberMe", "true");
+        localStorage.setItem("userEmail", email);
+      } else {
+        localStorage.removeItem("rememberMe");
+        localStorage.removeItem("userEmail");
       }
-
-      // Redirect based on account type
-      const accountType = data.data?.user?.accountType || "donor";
-      if (accountType === "charity") {
+  
+      // Small delay for toast to show
+      await new Promise(resolve => setTimeout(resolve, 500));
+  
+      // Redirect based on role
+      const role = userData.role || "donor";
+      
+      console.log("Redirecting to dashboard:", role);
+  
+      if (role === "charity") {
         router.push("/dashboard/charity");
-      } else if (accountType === "admin") {
+      } else if (role === "admin") {
         router.push("/dashboard/admin");
       } else {
         router.push("/dashboard/donor");
       }
+  
     } catch (error) {
+      console.error("Login error:", error);
+      
       toast({
         title: "Login Failed",
-        description: error instanceof Error ? error.message : "Invalid email or password",
+        description: error instanceof Error ? error.message : "Invalid email or password. Please try again.",
         variant: "destructive",
       });
     } finally {
       setIsLoading(false);
     }
   };
+
+  // Load saved email if "Remember Me" was checked
+  useState(() => {
+    const savedEmail = localStorage.getItem("userEmail");
+    const savedRememberMe = localStorage.getItem("rememberMe");
+    
+    if (savedRememberMe === "true" && savedEmail) {
+      setEmail(savedEmail);
+      setRememberMe(true);
+    }
+  });
 
   return (
     <Layout>
@@ -103,6 +168,8 @@ export default function Login() {
                       onChange={(e) => setEmail(e.target.value)}
                       className="pl-10"
                       required
+                      autoComplete="email"
+                      disabled={isLoading}
                     />
                   </div>
                 </div>
@@ -112,6 +179,7 @@ export default function Login() {
                     <Link
                       href="/auth/forgot-password"
                       className="text-xs text-primary hover:underline"
+                      tabIndex={-1}
                     >
                       Forgot password?
                     </Link>
@@ -126,11 +194,15 @@ export default function Login() {
                       onChange={(e) => setPassword(e.target.value)}
                       className="pl-10 pr-10"
                       required
+                      autoComplete="current-password"
+                      disabled={isLoading}
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
                       className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      tabIndex={-1}
+                      disabled={isLoading}
                     >
                       {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </button>
@@ -141,13 +213,24 @@ export default function Login() {
                     id="remember"
                     checked={rememberMe}
                     onCheckedChange={(checked) => setRememberMe(checked as boolean)}
+                    disabled={isLoading}
                   />
                   <Label htmlFor="remember" className="text-sm font-normal cursor-pointer">
                     Remember me for 30 days
                   </Label>
                 </div>
                 <Button type="submit" className="w-full" disabled={isLoading}>
-                  {isLoading ? "Signing In..." : "Sign In"}
+                  {isLoading ? (
+                    <>
+                      <svg className="mr-2 h-4 w-4 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Signing In...
+                    </>
+                  ) : (
+                    "Sign In"
+                  )}
                 </Button>
               </form>
             </CardContent>
@@ -161,7 +244,7 @@ export default function Login() {
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
-                <Button variant="outline" type="button">
+                <Button variant="outline" type="button" disabled>
                   <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24">
                     <path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
                     <path fill="currentColor" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
@@ -170,7 +253,7 @@ export default function Login() {
                   </svg>
                   Google
                 </Button>
-                <Button variant="outline" type="button">
+                <Button variant="outline" type="button" disabled>
                   <svg className="mr-2 h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
                     <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
                   </svg>
@@ -190,4 +273,3 @@ export default function Login() {
     </Layout>
   );
 }
-

@@ -29,7 +29,18 @@ async function apiFetch<T>(
       },
     });
 
-    const data = await response.json();
+    let data;
+    const contentType = response.headers.get('content-type');
+    
+    if (contentType && contentType.includes('application/json')) {
+      data = await response.json();
+    } else {
+      const text = await response.text();
+      console.error('Non-JSON response:', text);
+      return {
+        error: `Server returned non-JSON response: ${text.substring(0, 100)}`,
+      };
+    }
 
     if (!response.ok) {
       console.error('API error response:', data);
@@ -51,7 +62,7 @@ async function apiFetch<T>(
 export const authApi = {
   login: async (email: string, password: string) => {
     console.log('authApi.login called with:', { email, password: '***' });
-    const result = await apiFetch<{ user: any; token?: string; message: string }>(
+    const result = await apiFetch<{ user: any; access_token?: string; message: string }>(
       '/api/auth/login',
       {
         method: 'POST',
@@ -70,13 +81,27 @@ export const authApi = {
     accountType: 'donor' | 'charity';
     orgName?: string;
     registrationNumber?: string;
+    description?: string;
   }) => {
     console.log('authApi.register called with:', { ...data, password: '***' });
-    const result = await apiFetch<{ user: any; token?: string; message: string }>(
+    
+    // Transform accountType to userType for backend
+    const backendData = {
+      email: data.email,
+      password: data.password,
+      userType: data.accountType,  // ✅ Transform to userType
+      name: data.name,
+      phone: data.phone,
+      orgName: data.orgName,
+      registrationNumber: data.registrationNumber,
+      description: data.description,
+    };
+    
+    const result = await apiFetch<{ user: any; access_token?: string; message: string }>(
       '/api/auth/register',
       {
         method: 'POST',
-        body: JSON.stringify(data),
+        body: JSON.stringify(backendData),
       }
     );
     console.log('authApi.register result:', result);
@@ -89,12 +114,23 @@ export const authApi = {
     });
   },
 
-  getCurrentUser: async (token: string) => {
-    return apiFetch<{ user: any }>('/api/auth/me', {
+  getCurrentUser: async (email: string) => {
+    return apiFetch<{ role: string; profile: any }>(`/api/auth/me?email=${email}`, {
       method: 'GET',
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
+    });
+  },
+
+  forgotPassword: async (email: string) => {
+    return apiFetch<{ message: string }>('/api/auth/forgot-password', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    });
+  },
+
+  resetPassword: async (email: string, password: string) => {
+    return apiFetch<{ message: string }>('/api/auth/reset-password', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
     });
   },
 };
@@ -219,21 +255,16 @@ export const donationsApi = {
 
 // Users API functions
 export const usersApi = {
-  getProfile: async (token: string) => {
-    return apiFetch<{ user: any }>('/api/users/profile', {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
+  getProfile: async (email: string) => {
+    return apiFetch<{ role: string; profile: any }>(`/api/auth/me?email=${email}`, {
+      method: 'GET',
     });
   },
 
-  updateProfile: async (userData: any, token: string) => {
-    return apiFetch<{ user: any; message: string }>('/api/users/profile', {
+  updateProfile: async (userData: any, email: string) => {
+    return apiFetch<{ data: any; message: string }>('/api/auth/profile', {
       method: 'PUT',
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify(userData),
+      body: JSON.stringify({ email, ...userData }),
     });
   },
 };
