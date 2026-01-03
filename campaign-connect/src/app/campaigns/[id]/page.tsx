@@ -2,19 +2,35 @@
 
 import { useParams } from "next/navigation";
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { Layout } from "@/components/layout/Layout";
 import { ProgressBar } from "@/components/campaigns/ProgressBar";
-import { DonationForm } from "@/components/campaigns/DonationForm";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { mockCampaigns } from "@/data/mockCampaigns";
-import { 
-  Heart, Share2, Users, Clock, MapPin, Shield, 
-  ArrowLeft, CheckCircle, Calendar, DollarSign 
+import { campaignsApi } from "@/lib/api";
+import {
+  Heart, Share2, Users, Clock, Shield,
+  ArrowLeft, CheckCircle, Calendar, DollarSign, Loader2
 } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+
+interface Campaign {
+  id: string;
+  title: string;
+  description: string;
+  target_amount: number;
+  current_amount: number;
+  category: string;
+  end_date: string;
+  donor_count: number;
+  charities: {
+    name: string;
+    "Verified Status": boolean;
+  };
+}
 
 const recentDonors = [
   { name: "Sarah M.", amount: 100, time: "2 hours ago", avatar: "" },
@@ -40,13 +56,67 @@ const updates = [
 export default function CampaignDetails() {
   const params = useParams();
   const id = params.id as string;
-  const campaign = mockCampaigns.find((c) => c.id === id);
+  const { toast } = useToast();
 
-  if (!campaign) {
+  const [campaign, setCampaign] = useState<Campaign | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchCampaign = async () => {
+      try {
+        setIsLoading(true);
+        const response = await campaignsApi.getById(id);
+
+        if (response.error) {
+          setError(response.error);
+          toast({
+            title: "Error",
+            description: "Failed to load campaign details",
+            variant: "destructive",
+          });
+        } else if (response.data) {
+          const rawData = (response.data as any).data || response.data;
+          const campaignData: Campaign = {
+            ...rawData,
+            id: String(rawData.campaign_id || rawData.id),
+            target_amount: parseFloat(rawData.target_amount || rawData.goal_amount || 0),
+            current_amount: parseFloat(rawData.current_amount || 0),
+            days_left: rawData.days_left || 30,
+            donor_count: rawData.donor_count || 0,
+            charities: rawData.Charity || rawData.charities || { name: "Verified Charity", is_verified: true }
+          };
+          setCampaign(campaignData);
+        }
+      } catch (err) {
+        console.error("Error fetching campaign:", err);
+        setError("An unexpected error occurred");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    if (id) {
+      fetchCampaign();
+    }
+  }, [id, toast]);
+
+  if (isLoading) {
+    return (
+      <Layout>
+        <div className="container py-16 flex justify-center items-center min-h-[50vh]">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      </Layout>
+    );
+  }
+
+  if (error || !campaign) {
     return (
       <Layout>
         <div className="container py-16 text-center">
           <h1 className="text-2xl font-bold mb-4">Campaign Not Found</h1>
+          <p className="text-muted-foreground mb-6">{error || "The campaign you are looking for does not exist."}</p>
           <Button asChild>
             <Link href="/campaigns/browse">Browse All Campaigns</Link>
           </Button>
@@ -72,19 +142,14 @@ export default function CampaignDetails() {
             {/* Main Content */}
             <div className="lg:col-span-2 space-y-6">
               {/* Hero Image */}
-              <div className="relative aspect-video overflow-hidden rounded-xl">
-                <img
-                  src={campaign.image}
-                  alt={campaign.title}
-                  className="h-full w-full object-cover"
-                />
+              <div className="relative aspect-video overflow-hidden rounded-xl bg-success/20 flex items-center justify-center">
+                <div className="h-32 w-32 bg-success rounded-xl shadow-lg flex items-center justify-center">
+                  <Heart className="h-16 w-16 text-success-foreground opacity-50" />
+                </div>
                 <div className="absolute top-4 left-4 flex gap-2">
                   <Badge variant="secondary" className="bg-background/90 backdrop-blur-sm">
                     {campaign.category}
                   </Badge>
-                  {campaign.isUrgent && (
-                    <Badge className="bg-warning text-warning-foreground">Urgent</Badge>
-                  )}
                 </div>
               </div>
 
@@ -94,17 +159,20 @@ export default function CampaignDetails() {
                   <Avatar className="h-10 w-10">
                     <AvatarImage src="" />
                     <AvatarFallback className="bg-primary text-primary-foreground">
-                      {campaign.charity.charAt(0)}
+                      {campaign.charities?.name?.charAt(0) || 'C'}
                     </AvatarFallback>
                   </Avatar>
                   <div>
                     <p className="text-sm text-muted-foreground">Organized by</p>
-                    <p className="font-medium">{campaign.charity}</p>
+                    <p className="font-medium">{campaign.charities?.name || 'Charity Organization'}</p>
                   </div>
-                  <Badge variant="outline" className="ml-auto">
-                    <CheckCircle className="mr-1 h-3 w-3 text-success" />
-                    Verified
-                  </Badge>
+                  {/* @ts-ignore - 'Verified Status' has space in DB */}
+                  {campaign.charities?.['Verified Status'] && (
+                    <Badge variant="outline" className="ml-auto">
+                      <CheckCircle className="mr-1 h-3 w-3 text-success" />
+                      Verified
+                    </Badge>
+                  )}
                 </div>
                 <h1 className="text-2xl font-bold md:text-3xl">{campaign.title}</h1>
               </div>
@@ -115,21 +183,23 @@ export default function CampaignDetails() {
                   <DollarSign className="h-5 w-5 text-success" />
                   <div>
                     <p className="text-sm text-muted-foreground">Raised</p>
-                    <p className="font-semibold">${campaign.currentAmount.toLocaleString()}</p>
+                    <p className="font-semibold">${(campaign.current_amount || 0).toLocaleString()}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
                   <Users className="h-5 w-5 text-primary" />
                   <div>
                     <p className="text-sm text-muted-foreground">Donors</p>
-                    <p className="font-semibold">{campaign.donorCount.toLocaleString()}</p>
+                    <p className="font-semibold">{(campaign.donor_count || 0).toLocaleString()}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
                   <Clock className="h-5 w-5 text-warning" />
                   <div>
                     <p className="text-sm text-muted-foreground">Days Left</p>
-                    <p className="font-semibold">{campaign.daysLeft}</p>
+                    <p className="font-semibold">
+                      {campaign.end_date ? Math.max(0, Math.ceil((new Date(campaign.end_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24))) : 30}
+                    </p>
                   </div>
                 </div>
               </div>
@@ -147,8 +217,8 @@ export default function CampaignDetails() {
                       {campaign.description}
                     </p>
                     <p className="text-muted-foreground leading-relaxed mt-4">
-                      Your donation will directly support this cause and help us reach our goal of 
-                      ${campaign.goalAmount.toLocaleString()}. Every contribution, no matter the size, 
+                      Your donation will directly support this cause and help us reach our goal of
+                      ${(campaign.target_amount || 0).toLocaleString()}. Every contribution, no matter the size,
                       makes a meaningful difference in the lives of those we serve.
                     </p>
                     <h3 className="text-lg font-semibold mt-6 mb-3 text-foreground">How Your Donation Helps</h3>
@@ -207,8 +277,8 @@ export default function CampaignDetails() {
               <Card className="sticky top-24">
                 <CardContent className="pt-6">
                   <ProgressBar
-                    current={campaign.currentAmount}
-                    goal={campaign.goalAmount}
+                    current={campaign.current_amount || 0}
+                    goal={campaign.target_amount}
                     size="lg"
                   />
                   <div className="mt-6 space-y-3">

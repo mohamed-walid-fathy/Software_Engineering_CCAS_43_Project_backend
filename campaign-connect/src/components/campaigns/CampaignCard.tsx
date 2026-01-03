@@ -9,14 +9,12 @@ export interface Campaign {
   id: string;
   title: string;
   description: string;
-  image: string;
   currentAmount: number;
   goalAmount: number;
   donorCount: number;
   daysLeft: number;
   category: string;
   charity: string;
-  isUrgent?: boolean;
 }
 
 interface CampaignCardProps {
@@ -26,21 +24,14 @@ interface CampaignCardProps {
 export function CampaignCard({ campaign }: CampaignCardProps) {
   return (
     <Card className="group overflow-hidden transition-all duration-300 hover:shadow-lg hover:-translate-y-1">
-      <div className="relative aspect-[16/10] overflow-hidden">
-        <img
-          src={campaign.image}
-          alt={campaign.title}
-          className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
-        />
+      <div className="relative aspect-[16/10] overflow-hidden bg-success/20 flex items-center justify-center group">
+        <div className="h-24 w-24 bg-success rounded-lg shadow-inner flex items-center justify-center transition-transform duration-500 group-hover:scale-110">
+          <Heart className="h-10 w-10 text-success-foreground opacity-50" />
+        </div>
         <div className="absolute top-3 left-3 flex gap-2">
           <Badge variant="secondary" className="bg-background/90 backdrop-blur-sm">
             {campaign.category}
           </Badge>
-          {campaign.isUrgent && (
-            <Badge className="bg-warning text-warning-foreground">
-              Urgent
-            </Badge>
-          )}
         </div>
         <button className="absolute top-3 right-3 flex h-8 w-8 items-center justify-center rounded-full bg-background/90 backdrop-blur-sm transition-colors hover:bg-primary hover:text-primary-foreground">
           <Heart className="h-4 w-4" />

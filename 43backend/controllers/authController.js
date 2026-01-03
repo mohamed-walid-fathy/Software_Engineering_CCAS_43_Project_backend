@@ -80,7 +80,8 @@ export const register = async (req, res, next) => {
           email,
           name: orgName || name || '',
           description: description || null,
-          'Verified Status': false
+          'Verified Status': false,
+          Password: password // Save password for charity
         })
         .select()
         .single();
@@ -155,12 +156,44 @@ export const login = async (req, res, next) => {
       .single();
 
     if (charity) {
+      // Compare plain passwords - Schema uses 'Password' with capital P
+      if (password !== charity.Password) {
+        return errorResponse(res, 'Invalid email or password', null, 401);
+      }
+
       return successResponse(
         res,
         {
           user: {
             ...charity,
+            id: charity.Charity_id, // Normalize ID
             role: 'charity'
+          }
+        },
+        'Login successful',
+        200
+      );
+    }
+
+    // Check Admin table
+    const { data: adminUser } = await supabase
+      .from('admin') // Using 'admin' table as per schema
+      .select('*')
+      .or(`name.eq.${email},admin_id.eq.${email}`) // Allow login via name or admin_id
+      .single();
+
+    if (adminUser) {
+      if (password !== adminUser.password) { // Schema uses 'password' lowercase for admin
+        return errorResponse(res, 'Invalid email or password', null, 401);
+      }
+
+      return successResponse(
+        res,
+        {
+          user: {
+            ...adminUser,
+            id: adminUser.admin_id,
+            role: 'admin'
           }
         },
         'Login successful',
@@ -367,6 +400,26 @@ export const resetPassword = async (req, res, next) => {
       return successResponse(res, null, 'Password reset successfully', 200);
     }
 
+    // Try updating charity password
+    const { data: charity } = await supabase
+      .from('Charity')
+      .select('Charity_id')
+      .eq('email', email)
+      .single();
+
+    if (charity) {
+      const { error } = await supabase
+        .from('Charity')
+        .update({ Password: password }) // Schema uses 'Password' capital P
+        .eq('Charity_id', charity.Charity_id);
+
+      if (error) {
+        return errorResponse(res, 'Failed to reset password', error.message, 400);
+      }
+
+      return successResponse(res, null, 'Password reset successfully', 200);
+    }
+
     return errorResponse(res, 'User not found', null, 404);
 
   } catch (error) {
@@ -386,6 +439,51 @@ export const refreshToken = async (req, res, next) => {
       200
     );
   } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Change user password
+ */
+export const changePassword = async (req, res, next) => {
+  try {
+    const { email, oldPassword, newPassword } = req.body;
+
+    if (!email || !oldPassword || !newPassword) {
+      return errorResponse(res, 'Email, old password, and new password are required', null, 400);
+    }
+
+    // 1. Check Admin Table
+    const { data: adminUser } = await supabase.from('admin').select('*').or(`name.eq.${email},admin_id.eq.${email}`).single();
+    if (adminUser) {
+      if (adminUser.password !== oldPassword) return errorResponse(res, 'Invalid old password', null, 401);
+      const { error } = await supabase.from('admin').update({ password: newPassword }).eq('admin_id', adminUser.admin_id);
+      if (error) throw error;
+      return successResponse(res, null, 'Password changed successfully', 200);
+    }
+
+    // 2. Check Donor Table
+    const { data: donor } = await supabase.from('donor').select('*').eq('email', email).single();
+    if (donor) {
+      if (donor.password !== oldPassword) return errorResponse(res, 'Invalid old password', null, 401);
+      const { error } = await supabase.from('donor').update({ password: newPassword }).eq('donor_id', donor.donor_id);
+      if (error) throw error;
+      return successResponse(res, null, 'Password changed successfully', 200);
+    }
+
+    // 3. Check Charity Table
+    const { data: charity } = await supabase.from('Charity').select('*').eq('email', email).single();
+    if (charity) {
+      if (charity.Password !== oldPassword) return errorResponse(res, 'Invalid old password', null, 401);
+      const { error } = await supabase.from('Charity').update({ Password: newPassword }).eq('Charity_id', charity.Charity_id);
+      if (error) throw error;
+      return successResponse(res, null, 'Password changed successfully', 200);
+    }
+
+    return errorResponse(res, 'User not found', null, 404);
+  } catch (error) {
+    console.error('Change password error:', error);
     next(error);
   }
 };

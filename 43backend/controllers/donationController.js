@@ -60,6 +60,7 @@ export const createDonation = async (req, res, next) => {
       .single();
 
     if (donationError) {
+      console.error('Supabase error in createDonation:', donationError);
       return errorResponse(res, 'Failed to create donation', donationError.message, 400);
     }
 
@@ -72,8 +73,7 @@ export const createDonation = async (req, res, next) => {
     const { error: updateError } = await supabase
       .from('Campaign')
       .update({
-        current_amount: newAmount,
-        updated_at: new Date().toISOString()
+        current_amount: newAmount
       })
       .eq('campaign_id', campaign_id);
 
@@ -107,19 +107,19 @@ export const createDonation = async (req, res, next) => {
  * Get donations with filters
  */
 export const getDonations = async (req, res, next) => {
-    try {
-      const {
-        campaign_id,
-        donor_id,
-        charity_id,
-        status,
-        page = 1,
-        limit = 20
-      } = req.query;
-  
-      let query = supabase
-        .from('Donation')
-        .select(`
+  try {
+    const {
+      campaign_id,
+      donor_id,
+      charity_id,
+      status,
+      page = 1,
+      limit = 20
+    } = req.query;
+
+    let query = supabase
+      .from('Donation')
+      .select(`
           *,
           Campaign!campaign_id (
             campaign_id,
@@ -131,106 +131,106 @@ export const getDonations = async (req, res, next) => {
             status
           )
         `);
-  
-      // Apply filters
-      if (campaign_id) {
-        query = query.eq('campaign_id', campaign_id);
-      }
-  
-      if (donor_id) {
-        query = query.eq('donor_id', donor_id);
-      }
-  
-      if (status) {
-        query = query.eq('transaction_status', status);
-      }
-  
-      if (charity_id) {
-        const { data: campaigns } = await supabase
-          .from('Campaign')
-          .select('campaign_id')
-          .eq('charity_id', charity_id);
-  
-        const campaignIds = campaigns?.map(c => c.campaign_id) || [];
-        if (campaignIds.length > 0) {
-          query = query.in('campaign_id', campaignIds);
-        } else {
-          return paginatedResponse(
-            res,
-            [],
-            {
-              page: parseInt(page),
-              limit: parseInt(limit),
-              total: 0,
-              totalPages: 0
-            },
-            'Donations retrieved successfully',
-            200
-          );
-        }
-      }
-  
-      // Get total count
-      const { count } = await supabase
-        .from('Donation')
-        .select('*', { count: 'exact', head: true });
-  
-      // Apply pagination
-      const from = (page - 1) * limit;
-      const to = from + limit - 1;
-      query = query.range(from, to);
-  
-      // Order by donation_date
-      query = query.order('donation_date', { ascending: false });
-  
-      const { data: donations, error } = await query;
-  
-      if (error) {
-        return errorResponse(res, 'Failed to fetch donations', error.message, 500);
-      }
-  
-      // Fetch donor data for each donation
-      const donationsWithDonors = await Promise.all(
-        donations.map(async (donation) => {
-          if (donation.donor_id && !donation.is_anonymous) {
-            const { data: donor } = await supabase
-              .from('donor')
-              .select('donor_id, name, email')
-              .eq('donor_id', donation.donor_id)
-              .single();
-            
-            if (donor) {
-              donation.donor = donor;
-            }
-          } else if (donation.is_anonymous) {
-            donation.donor = {
-              donor_id: null,
-              name: 'Anonymous',
-              email: null
-            };
-          }
-          return donation;
-        })
-      );
-  
-      const totalPages = Math.ceil((count || 0) / limit);
-  
-      return paginatedResponse(
-        res,
-        donationsWithDonors,
-        {
-          page: parseInt(page),
-          limit: parseInt(limit),
-          total: count || 0,
-          totalPages
-        },
-        'Donations retrieved successfully',
-        200
-      );
-    } catch (error) {
-      next(error);
+
+    // Apply filters
+    if (campaign_id) {
+      query = query.eq('campaign_id', campaign_id);
     }
-  };
+
+    if (donor_id) {
+      query = query.eq('donor_id', donor_id);
+    }
+
+    if (status) {
+      query = query.eq('transaction_status', status);
+    }
+
+    if (charity_id) {
+      const { data: campaigns } = await supabase
+        .from('Campaign')
+        .select('campaign_id')
+        .eq('charity_id', charity_id);
+
+      const campaignIds = campaigns?.map(c => c.campaign_id) || [];
+      if (campaignIds.length > 0) {
+        query = query.in('campaign_id', campaignIds);
+      } else {
+        return paginatedResponse(
+          res,
+          [],
+          {
+            page: parseInt(page),
+            limit: parseInt(limit),
+            total: 0,
+            totalPages: 0
+          },
+          'Donations retrieved successfully',
+          200
+        );
+      }
+    }
+
+    // Get total count
+    const { count } = await supabase
+      .from('Donation')
+      .select('*', { count: 'exact', head: true });
+
+    // Apply pagination
+    const from = (page - 1) * limit;
+    const to = from + limit - 1;
+    query = query.range(from, to);
+
+    // Order by donation_date
+    query = query.order('donation_date', { ascending: false });
+
+    const { data: donations, error } = await query;
+
+    if (error) {
+      return errorResponse(res, 'Failed to fetch donations', error.message, 500);
+    }
+
+    // Fetch donor data for each donation
+    const donationsWithDonors = await Promise.all(
+      donations.map(async (donation) => {
+        if (donation.donor_id && !donation.is_anonymous) {
+          const { data: donor } = await supabase
+            .from('donor')
+            .select('donor_id, name, email')
+            .eq('donor_id', donation.donor_id)
+            .single();
+
+          if (donor) {
+            donation.donor = donor;
+          }
+        } else if (donation.is_anonymous) {
+          donation.donor = {
+            donor_id: null,
+            name: 'Anonymous',
+            email: null
+          };
+        }
+        return donation;
+      })
+    );
+
+    const totalPages = Math.ceil((count || 0) / limit);
+
+    return paginatedResponse(
+      res,
+      donationsWithDonors,
+      {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total: count || 0,
+        totalPages
+      },
+      'Donations retrieved successfully',
+      200
+    );
+  } catch (error) {
+    next(error);
+  }
+};
 
 /**
  * Get single donation by ID
@@ -253,7 +253,7 @@ export const getDonationById = async (req, res, next) => {
       `)
       .eq('donation_id', id)
       .single();
-    
+
     // Fetch donor data separately if donor_id exists
     if (donation && donation.donor_id) {
       const { data: donor } = await supabase
@@ -261,7 +261,7 @@ export const getDonationById = async (req, res, next) => {
         .select('donor_id, name, email')
         .eq('donor_id', donation.donor_id)
         .single();
-      
+
       if (donor) {
         donation.donor = donor;
       }
@@ -324,7 +324,7 @@ export const refundDonation = async (req, res, next) => {
     const { data: updatedDonation, error: updateError } = await supabase
       .from('Donation')
       .update({ transaction_status: 'refunded' })
-      .eq('id', id)
+      .eq('donation_id', id)
       .select()
       .single();
 
@@ -333,12 +333,11 @@ export const refundDonation = async (req, res, next) => {
     }
 
     // Update campaign current_amount
-    const newAmount = Math.max(0, parseFloat(donation.campaigns.current_amount) - parseFloat(donation.amount));
+    const newAmount = Math.max(0, parseFloat(donation.Campaign.current_amount) - parseFloat(donation.amount));
     await supabase
       .from('Campaign')
       .update({
-        current_amount: newAmount,
-        updated_at: new Date().toISOString()
+        current_amount: newAmount
       })
       .eq('campaign_id', donation.campaign_id);
 
@@ -353,14 +352,21 @@ export const refundDonation = async (req, res, next) => {
 /**
  * Get donation statistics
  */
+/**
+ * Get donation statistics
+ */
 export const getDonationStats = async (req, res, next) => {
   try {
-    const { campaign_id, charity_id } = req.query;
+    const { campaign_id, charity_id, donor_id } = req.query;
 
-    let query = supabase.from('Donation').select('*').eq('transaction_status', 'completed');
+    let query = supabase.from('Donation').select('*').in('transaction_status', ['completed', 'Done']);
 
     if (campaign_id) {
       query = query.eq('campaign_id', campaign_id);
+    }
+
+    if (donor_id) {
+      query = query.eq('donor_id', donor_id);
     }
 
     if (charity_id) {
@@ -385,17 +391,74 @@ export const getDonationStats = async (req, res, next) => {
     const totalAmount = donations.reduce((sum, d) => sum + parseFloat(d.amount), 0);
     const averageDonation = totalDonations > 0 ? totalAmount / totalDonations : 0;
 
+    // Calculate unique campaigns supported count
+    const campaignsCount = new Set(donations.map(d => d.campaign_id)).size;
+
     return successResponse(
       res,
       {
         total_donations: totalDonations,
         total_amount: totalAmount,
-        average_donation: averageDonation
+        average_donation: averageDonation,
+        campaign_count: campaignsCount,
+        // Calculate mock rank based on amount
+        rank: totalAmount > 10000 ? 'Gold' : totalAmount > 1000 ? 'Silver' : 'Bronze'
       },
       'Statistics retrieved successfully',
       200
     );
   } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Get platform-wide statistics for homepage
+ */
+export const getPlatformStats = async (req, res, next) => {
+  try {
+    // 1. Get total raised and unique donors from Donation table
+    const { data: donations, error: donationError } = await supabase
+      .from('Donation')
+      .select('amount, donor_id')
+      .in('transaction_status', ['completed', 'Done']);
+
+    if (donationError) throw donationError;
+
+    const totalRaised = donations.reduce((sum, d) => sum + parseFloat(d.amount), 0);
+    const totalDonors = new Set(donations.map(d => d.donor_id).filter(id => id !== null)).size;
+
+    // 2. Get active campaigns count
+    const { count: activeCampaigns, error: campaignError } = await supabase
+      .from('Campaign')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'active');
+
+    if (campaignError) throw campaignError;
+
+    // 3. Get verified charities count
+    const { count: verifiedCharities, error: charityError } = await supabase
+      .from('Charity')
+      .select('*', { count: 'exact', head: true })
+      .eq('Verified Status', true);
+
+    if (charityError) throw charityError;
+
+    return successResponse(
+      res,
+      {
+        total_raised: totalRaised,
+        total_donors: totalDonors,
+        total_campaigns: activeCampaigns || 0,
+        total_charities: verifiedCharities || 0,
+        // Mocking countries as we don't have it in schema yet, but using a semi-realistic number
+        countries_count: 5 // Default for now
+      },
+      'Platform statistics retrieved successfully',
+      200
+    );
+  } catch (error) {
+    console.error('Error in getPlatformStats:', error);
     next(error);
   }
 };
@@ -435,7 +498,7 @@ export const generateReceipt = async (req, res, next) => {
           current_amount
         ),
         donor (
-          id,
+          donor_id,
           name,
           email
         )

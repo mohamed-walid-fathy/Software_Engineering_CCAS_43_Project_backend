@@ -17,14 +17,14 @@ export const getCampaigns = async (req, res, next) => {
     } = req.query;
 
     let query = supabase
-      .from('campaigns')
+      .from('Campaign')
       .select(`
         *,
-        charities (
-          id,
+        Charity (
+          Charity_id,
           name,
           email,
-          is_verified
+          Verified Status
         )
       `);
 
@@ -34,11 +34,14 @@ export const getCampaigns = async (req, res, next) => {
     }
 
     if (charity_id) {
-      query = query.eq('charity_id', charity_id);
+      query = query.eq('Charity_id', charity_id);
     }
 
+    // Default to active campaigns only (unless explicitly requesting other statuses)
     if (status) {
       query = query.eq('status', status);
+    } else {
+      query = query.eq('status', 'active');
     }
 
     if (search) {
@@ -47,7 +50,7 @@ export const getCampaigns = async (req, res, next) => {
 
     // Get total count for pagination
     const { count } = await supabase
-      .from('campaigns')
+      .from('Campaign')
       .select('*', { count: 'exact', head: true });
 
     // Apply pagination
@@ -59,33 +62,39 @@ export const getCampaigns = async (req, res, next) => {
     if (sort === 'most-funded') {
       query = query.order('current_amount', { ascending: false });
     } else if (sort === 'ending-soon') {
-      query = query.order('days_left', { ascending: true });
+      query = query.order('end_date', { ascending: true });
     } else if (sort === 'most-donors') {
-      // This would require a join or separate query to count donors
-      query = query.order('created_at', { ascending: false });
+      query = query.order('campaign_id', { ascending: false });
     } else {
-      query = query.order('created_at', { ascending: false });
+      query = query.order('campaign_id', { ascending: false });
     }
 
     const { data: campaigns, error } = await query;
 
     if (error) {
-      return errorResponse(res, 'Failed to fetch campaigns', error.message, 500);
+      return errorResponse(res, 'Failed to fetch campaigns', error.message || JSON.stringify(error), 500);
     }
 
     // Calculate donor count for each campaign
     const campaignsWithDonorCount = await Promise.all(
       campaigns.map(async (campaign) => {
-        const { count } = await supabase
-          .from('Donation')
-          .select('*', { count: 'exact', head: true })
-          .eq('campaign_id', campaign.id)
-          .eq('status', 'completed');
+        try {
+          const { count, error: countError } = await supabase
+            .from('Donation')
+            .select('*', { count: 'exact', head: true })
+            .eq('campaign_id', campaign.campaign_id || campaign.id)
+            .eq('transaction_status', 'completed');
 
-        return {
-          ...campaign,
-          donor_count: count || 0
-        };
+          if (countError) console.warn('Count error for campaign:', campaign.campaign_id || campaign.id, countError);
+
+          return {
+            ...campaign,
+            donor_count: count || 0
+          };
+        } catch (innerErr) {
+          console.warn('Inner error calculating donor count:', innerErr);
+          return { ...campaign, donor_count: 0 };
+        }
       })
     );
 
@@ -114,23 +123,18 @@ export const getCampaigns = async (req, res, next) => {
 export const getFeaturedCampaigns = async (req, res, next) => {
   try {
     const { data, error } = await supabase
-      .from('campaigns')
+      .from('Campaign')
       .select(`
         *,
-        charities (
-          id,
-          name,
-          email,
-          is_verified
-        )
+        Charity (*)
       `)
-      .eq('is_urgent', true)
       .eq('status', 'active')
-      .order('created_at', { ascending: false })
+      .order('campaign_id', { ascending: false })
       .limit(10);
 
     if (error) {
-      return errorResponse(res, 'Failed to fetch featured campaigns', error.message, 500);
+      console.error('Supabase error in getFeaturedCampaigns:', error);
+      return errorResponse(res, 'Failed to fetch featured campaigns', error.message || JSON.stringify(error), 500);
     }
 
     return successResponse(res, data, 'Featured campaigns retrieved successfully', 200);
@@ -147,17 +151,12 @@ export const getCampaignById = async (req, res, next) => {
     const { id } = req.params;
 
     const { data: campaign, error } = await supabase
-      .from('campaigns')
+      .from('Campaign')
       .select(`
         *,
-        charities (
-          id,
-          name,
-          email,
-          is_verified
-        )
+        Charity (*)
       `)
-      .eq('id', id)
+      .eq('campaign_id', id)
       .single();
 
     if (error || !campaign) {
@@ -165,11 +164,13 @@ export const getCampaignById = async (req, res, next) => {
     }
 
     // Get donor count
-    const { count } = await supabase
+    const { count, error: countError } = await supabase
       .from('Donation')
       .select('*', { count: 'exact', head: true })
-      .eq('campaign_id', id)
-      .eq('status', 'completed');
+      .eq('campaign_id', campaign.campaign_id || campaign.id)
+      .eq('transaction_status', 'completed');
+
+    if (countError) console.warn('Donor count error for single campaign:', id, countError);
 
     return successResponse(
       res,
@@ -193,25 +194,23 @@ export const createCampaign = async (req, res, next) => {
     const {
       title,
       description,
-      goal_amount,
+      target_amount,
       category,
-      image,
-      days_left,
-      is_urgent
+      end_date
     } = req.body;
 
     // Validation
-    if (!title || !description || !goal_amount || !category) {
+    if (!title || !description || !target_amount || !category || !end_date) {
       return errorResponse(
         res,
         'Missing required fields',
-        'title, description, goal_amount, and category are required',
+        'title, description, target_amount, category, and end_date are required',
         400
       );
     }
 
-    if (goal_amount <= 0) {
-      return errorResponse(res, 'goal_amount must be greater than 0', null, 400);
+    if (target_amount <= 0) {
+      return errorResponse(res, 'target_amount must be greater than 0', null, 400);
     }
 
     // No authentication required - charity_id must be provided in request
@@ -224,27 +223,20 @@ export const createCampaign = async (req, res, next) => {
     const campaignData = {
       title,
       description,
-      goal_amount: parseFloat(goal_amount),
+      target_amount: parseFloat(target_amount),
       current_amount: 0,
       category,
       charity_id,
-      image: image || null,
-      days_left: days_left || null,
-      is_urgent: is_urgent || false,
-      status: 'active'
+      end_date,
+      status: 'pending'
     };
 
     const { data, error } = await supabase
-      .from('campaigns')
+      .from('Campaign')
       .insert(campaignData)
       .select(`
         *,
-        charities (
-          id,
-          name,
-          email,
-          is_verified
-        )
+        Charity (*)
       `)
       .single();
 
@@ -280,19 +272,17 @@ export const updateCampaign = async (req, res, next) => {
     delete updates.current_amount; // Updated through donations
 
     const { data, error } = await supabase
-      .from('campaigns')
+      .from('Campaign')
       .update({
-        ...updates,
-        updated_at: new Date().toISOString()
+        ...updates
       })
-      .eq('id', id)
+      .eq('campaign_id', id)
       .select(`
         *,
-        charities (
-          id,
+        Charity (
+          Charity_id,
           name,
-          email,
-          is_verified
+          email
         )
       `)
       .single();
@@ -315,9 +305,9 @@ export const deleteCampaign = async (req, res, next) => {
     const { id } = req.params;
 
     const { error } = await supabase
-      .from('campaigns')
+      .from('Campaign')
       .delete()
-      .eq('id', id);
+      .eq('campaign_id', id);
 
     if (error) {
       return errorResponse(res, 'Failed to delete campaign', error.message, 400);
@@ -337,9 +327,9 @@ export const pauseCampaign = async (req, res, next) => {
     const { id } = req.params;
 
     const { data, error } = await supabase
-      .from('campaigns')
-      .update({ status: 'paused', updated_at: new Date().toISOString() })
-      .eq('id', id)
+      .from('Campaign')
+      .update({ status: 'paused' })
+      .eq('campaign_id', id)
       .select()
       .single();
 
@@ -361,9 +351,9 @@ export const resumeCampaign = async (req, res, next) => {
     const { id } = req.params;
 
     const { data, error } = await supabase
-      .from('campaigns')
-      .update({ status: 'active', updated_at: new Date().toISOString() })
-      .eq('id', id)
+      .from('Campaign')
+      .update({ status: 'active' })
+      .eq('campaign_id', id)
       .select()
       .single();
 
@@ -386,9 +376,9 @@ export const getCampaignAnalytics = async (req, res, next) => {
 
     // Get campaign details
     const { data: campaign, error: campaignError } = await supabase
-      .from('campaigns')
+      .from('Campaign')
       .select('*')
-      .eq('id', id)
+      .eq('campaign_id', id)
       .single();
 
     if (campaignError || !campaign) {
@@ -402,7 +392,7 @@ export const getCampaignAnalytics = async (req, res, next) => {
       .from('Donation')
       .select('*')
       .eq('campaign_id', id)
-      .eq('status', 'completed');
+      .eq('transaction_status', 'completed');
 
     if (donationsError) {
       return errorResponse(res, 'Failed to fetch analytics', donationsError.message, 500);
@@ -422,7 +412,7 @@ export const getCampaignAnalytics = async (req, res, next) => {
           total_amount: totalAmount,
           average_donation: averageDonation,
           anonymous_count: anonymousCount,
-          completion_percentage: (campaign.current_amount / campaign.goal_amount) * 100
+          completion_percentage: (campaign.current_amount / campaign.target_amount) * 100
         },
         donations
       },

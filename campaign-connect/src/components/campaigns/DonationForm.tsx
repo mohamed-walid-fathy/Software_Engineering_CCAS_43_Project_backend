@@ -1,25 +1,37 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Heart, CreditCard, Shield, Lock } from "lucide-react";
+import { Heart, CreditCard, Shield, Lock, Loader2 } from "lucide-react";
+import { donationsApi } from "@/lib/api";
+import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/context/AuthContext";
 
 const presetAmounts = [25, 50, 100, 250, 500];
 
 interface DonationFormProps {
   campaignTitle: string;
+  campaignId: string;
   onSubmit?: (amount: number) => void;
 }
 
-export function DonationForm({ campaignTitle, onSubmit }: DonationFormProps) {
+export function DonationForm({ campaignTitle, campaignId, onSubmit }: DonationFormProps) {
   const [amount, setAmount] = useState<number | null>(50);
   const [customAmount, setCustomAmount] = useState("");
   const [isAnonymous, setIsAnonymous] = useState(false);
   const [isMonthly, setIsMonthly] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [cardNumber, setCardNumber] = useState("");
+  const [expiry, setExpiry] = useState("");
+  const [cvc, setCvc] = useState("");
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const router = useRouter();
 
   const selectedAmount = customAmount ? parseFloat(customAmount) : amount;
 
@@ -29,14 +41,66 @@ export function DonationForm({ campaignTitle, onSubmit }: DonationFormProps) {
   };
 
   const handleCustomChange = (value: string) => {
+    if (value && !/^\d*\.?\d*$/.test(value)) return;
     setCustomAmount(value);
     setAmount(null);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleCardNumberChange = (value: string) => {
+    const cleaned = value.replace(/\D/g, "").slice(0, 16);
+    setCardNumber(cleaned);
+  };
+
+  const handleExpiryChange = (value: string) => {
+    const cleaned = value.replace(/\D/g, "").slice(0, 4);
+    setExpiry(cleaned);
+  };
+
+  const handleCvcChange = (value: string) => {
+    const cleaned = value.replace(/\D/g, "").slice(0, 3);
+    setCvc(cleaned);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (selectedAmount && selectedAmount > 0) {
-      onSubmit?.(selectedAmount);
+      try {
+        setLoading(true);
+        const response = await donationsApi.create({
+          campaign_id: parseInt(campaignId),
+          donor_id: isAnonymous ? null : (user?.donor_id ? parseInt(user.donor_id) : null),
+          amount: selectedAmount,
+          is_anonymous: isAnonymous,
+          payment_method: 'card'
+        });
+
+        if (response.error) {
+          toast({
+            title: "Donation Failed",
+            description: response.error,
+            variant: "destructive",
+          });
+        } else {
+          toast({
+            title: "Thank You! 💚",
+            description: `Your donation of $${selectedAmount.toLocaleString()} has been processed successfully.`,
+          });
+          setCardNumber("");
+          setExpiry("");
+          setCvc("");
+          onSubmit?.(selectedAmount);
+          // Redirect to success or back to campaign
+          router.push(`/campaigns/${campaignId}`);
+        }
+      } catch (err: any) {
+        toast({
+          title: "Error",
+          description: "An unexpected error occurred. Please try again.",
+          variant: "destructive",
+        });
+      } finally {
+        setLoading(false);
+      }
     }
   };
 
@@ -90,18 +154,18 @@ export function DonationForm({ campaignTitle, onSubmit }: DonationFormProps) {
 
           {/* Options */}
           <div className="space-y-3">
-            <div className="flex items-center space-x-2">
-              <Checkbox 
-                id="monthly" 
+            {/* <div className="flex items-center space-x-2">
+              <Checkbox
+                id="monthly"
                 checked={isMonthly}
                 onCheckedChange={(checked) => setIsMonthly(checked as boolean)}
               />
               <Label htmlFor="monthly" className="text-sm font-normal cursor-pointer">
                 Make this a monthly donation
               </Label>
-            </div>
+            </div> */}
             <div className="flex items-center space-x-2">
-              <Checkbox 
+              <Checkbox
                 id="anonymous"
                 checked={isAnonymous}
                 onCheckedChange={(checked) => setIsAnonymous(checked as boolean)}
@@ -113,22 +177,24 @@ export function DonationForm({ campaignTitle, onSubmit }: DonationFormProps) {
           </div>
 
           {/* Donor Info */}
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="firstName">First Name</Label>
-                <Input id="firstName" placeholder="John" />
+          {!isAnonymous && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="firstName">First Name</Label>
+                  <Input id="firstName" placeholder="John" required />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="lastName">Last Name</Label>
+                  <Input id="lastName" placeholder="Doe" required />
+                </div>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="lastName">Last Name</Label>
-                <Input id="lastName" placeholder="Doe" />
+                <Label htmlFor="email">Email</Label>
+                <Input id="email" type="email" placeholder="john@example.com" required />
               </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input id="email" type="email" placeholder="john@example.com" />
-            </div>
-          </div>
+          )}
 
           {/* Payment Section */}
           <div className="space-y-4 pt-4 border-t">
@@ -138,24 +204,51 @@ export function DonationForm({ campaignTitle, onSubmit }: DonationFormProps) {
             </div>
             <div className="space-y-2">
               <Label htmlFor="cardNumber">Card Number</Label>
-              <Input id="cardNumber" placeholder="4242 4242 4242 4242" />
+              <Input
+                id="cardNumber"
+                placeholder="4242 4242 4242 4242"
+                value={cardNumber}
+                onChange={(e) => handleCardNumberChange(e.target.value)}
+                required
+              />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="expiry">Expiry Date</Label>
-                <Input id="expiry" placeholder="MM/YY" />
+                <Label htmlFor="expiry">Expiry Date (MMYY)</Label>
+                <Input
+                  id="expiry"
+                  placeholder="MMYY"
+                  value={expiry}
+                  onChange={(e) => handleExpiryChange(e.target.value)}
+                  required
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="cvc">CVC</Label>
-                <Input id="cvc" placeholder="123" />
+                <Input
+                  id="cvc"
+                  placeholder="123"
+                  value={cvc}
+                  onChange={(e) => handleCvcChange(e.target.value)}
+                  required
+                />
               </div>
             </div>
           </div>
 
           {/* Submit */}
-          <Button type="submit" size="lg" className="w-full" disabled={!selectedAmount || selectedAmount <= 0}>
-            <Lock className="mr-2 h-4 w-4" />
-            Donate ${selectedAmount?.toLocaleString() || 0} {isMonthly ? "Monthly" : ""}
+          <Button type="submit" size="lg" className="w-full" disabled={loading || !selectedAmount || selectedAmount <= 0}>
+            {loading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Processing...
+              </>
+            ) : (
+              <>
+                <Lock className="mr-2 h-4 w-4" />
+                Donate ${selectedAmount?.toLocaleString() || 0} {isMonthly ? "Monthly" : ""}
+              </>
+            )}
           </Button>
 
           {/* Trust Badges */}

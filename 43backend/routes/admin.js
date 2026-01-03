@@ -8,6 +8,8 @@ const router = express.Router();
 router.get('/stats', adminController.getStats);
 router.get('/activity', adminController.getActivity);
 router.get('/flagged-campaigns', adminController.getFlaggedCampaigns);
+router.get('/pending-campaigns', adminController.getPendingCampaigns);
+router.post('/campaigns/:id/approve', adminController.approveCampaign);
 router.post('/campaigns/:id/flag', adminController.flagCampaign);
 router.post('/campaigns/:id/unflag', adminController.unflagCampaign);
 router.post('/campaigns/:id/suspend', adminController.suspendCampaign);

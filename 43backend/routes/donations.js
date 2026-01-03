@@ -7,6 +7,7 @@ const router = express.Router();
 router.post('/', donationController.createDonation);
 router.get('/', donationController.getDonations);
 router.get('/stats', donationController.getDonationStats);
+router.get('/platform-stats', donationController.getPlatformStats);
 router.get('/:id', donationController.getDonationById);
 router.post('/:id/refund', donationController.refundDonation);
 router.get('/receipt/:id', donationController.generateReceipt);

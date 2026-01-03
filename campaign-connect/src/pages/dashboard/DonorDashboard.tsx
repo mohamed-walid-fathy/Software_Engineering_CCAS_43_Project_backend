@@ -4,17 +4,19 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Progress } from "@/components/ui/progress";
-import { 
-  Heart, DollarSign, TrendingUp, Calendar, 
+import {
+  Heart, DollarSign, TrendingUp, Calendar,
+  Gift, Bell, Settings, Download, ArrowUpRight
+} from "lucide-react";
+Heart, DollarSign, TrendingUp, Calendar,
   Gift, Bell, Settings, Download, ArrowUpRight 
 } from "lucide-react";
 import { Link } from "react-router-dom";
+import { donationsApi } from "../../lib/api";
+import { useState, useEffect } from "react";
 
-const donationHistory = [
-  { id: 1, campaign: "Clean Water for Rural Communities", charity: "WaterAid Foundation", amount: 100, date: "Dec 15, 2024", status: "completed" },
-  { id: 2, campaign: "Education for Underprivileged Children", charity: "Bright Futures NGO", amount: 50, date: "Dec 10, 2024", status: "completed" },
-  { id: 3, campaign: "Emergency Medical Aid for Gaza", charity: "Doctors Without Borders", amount: 250, date: "Nov 28, 2024", status: "completed" },
-];
+// Removed static donationHistory
+
 
 const savedCampaigns = [
   { id: "1", title: "Clean Water for Rural Communities", progress: 60, image: "https://images.unsplash.com/photo-1488521787991-ed7bbaae773c?w=200&h=150&fit=crop" },
@@ -22,6 +24,54 @@ const savedCampaigns = [
 ];
 
 export default function DonorDashboard() {
+  const [donations, setDonations] = useState<any[]>([]);
+  const [stats, setStats] = useState({
+    totalDonated: 0,
+    campaignsSupported: 0,
+    monthlyGiving: 0
+  });
+  const [loading, setLoading] = useState(true);
+
+  // TODO: Get actual logged in user ID. Using 61 from user context for testing.
+  const TEST_DONOR_ID = "61";
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        // Fetch donations for the donor
+        const response = await donationsApi.getAll({
+          donor_id: TEST_DONOR_ID,
+          limit: 100 // Get enough to calculate stats
+        });
+
+        if (response.data && response.data.donations) {
+          const fetchedDonations = response.data.donations;
+          setDonations(fetchedDonations);
+
+          // Calculate stats
+          const total = fetchedDonations.reduce((sum: number, d: any) => sum + Number(d.amount), 0);
+          const uniqueCampaigns = new Set(fetchedDonations.map((d: any) => d.campaign_id)).size;
+
+          // For monthly giving, we would typically check recurring donations table
+          // simplified estimate for now or 0
+
+          setStats({
+            totalDonated: total,
+            campaignsSupported: uniqueCampaigns,
+            monthlyGiving: 0 // Placeholder until we connect recurring donations
+          });
+        }
+      } catch (error) {
+        console.error("Failed to fetch donor data:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, []);
+
   return (
     <Layout>
       <div className="bg-gradient-to-b from-primary/5 to-background min-h-screen">
@@ -34,7 +84,7 @@ export default function DonorDashboard() {
                 <AvatarFallback className="bg-primary text-primary-foreground text-xl">JD</AvatarFallback>
               </Avatar>
               <div>
-                <h1 className="text-2xl font-bold">Welcome back, John!</h1>
+                <h1 className="text-2xl font-bold">Welcome back!</h1>
                 <p className="text-muted-foreground">Your generosity is making a difference</p>
               </div>
             </div>
@@ -64,7 +114,7 @@ export default function DonorDashboard() {
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Total Donated</p>
-                    <p className="text-2xl font-bold">$1,425</p>
+                    <p className="text-2xl font-bold">${stats.totalDonated.toLocaleString()}</p>
                   </div>
                 </div>
               </CardContent>
@@ -77,7 +127,7 @@ export default function DonorDashboard() {
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Campaigns Supported</p>
-                    <p className="text-2xl font-bold">12</p>
+                    <p className="text-2xl font-bold">{stats.campaignsSupported}</p>
                   </div>
                 </div>
               </CardContent>
@@ -90,7 +140,7 @@ export default function DonorDashboard() {
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Monthly Giving</p>
-                    <p className="text-2xl font-bold">$50/mo</p>
+                    <p className="text-2xl font-bold">${stats.monthlyGiving}/mo</p>
                   </div>
                 </div>
               </CardContent>
@@ -126,30 +176,39 @@ export default function DonorDashboard() {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
-                    {donationHistory.map((donation) => (
-                      <div
-                        key={donation.id}
-                        className="flex items-center justify-between rounded-lg border p-4"
-                      >
-                        <div className="flex-1">
-                          <p className="font-medium">{donation.campaign}</p>
-                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                            <span>{donation.charity}</span>
-                            <span>•</span>
-                            <span className="flex items-center gap-1">
-                              <Calendar className="h-3 w-3" />
-                              {donation.date}
-                            </span>
+                    {loading ? (
+                      <p className="text-center text-muted-foreground py-4">Loading donations...</p>
+                    ) : donations.length === 0 ? (
+                      <p className="text-center text-muted-foreground py-4">No donations found.</p>
+                    ) : (
+                      donations.map((donation) => (
+                        <div
+                          key={donation.donation_id}
+                          className="flex items-center justify-between rounded-lg border p-4"
+                        >
+                          <div className="flex-1">
+                            <p className="font-medium">
+                              {donation.Campaign?.title || `Campaign #${donation.campaign_id}`}
+                            </p>
+                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                              {/* Charity name is not directly in donation, would need separate fetch or join in backend */}
+                              <span>Charity</span>
+                              <span>•</span>
+                              <span className="flex items-center gap-1">
+                                <Calendar className="h-3 w-3" />
+                                {new Date(donation.donation_date).toLocaleDateString()}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <p className="font-semibold text-success">${donation.amount}</p>
+                            <Badge variant="secondary" className="text-xs">
+                              {donation.transaction_status}
+                            </Badge>
                           </div>
                         </div>
-                        <div className="text-right">
-                          <p className="font-semibold text-success">${donation.amount}</p>
-                          <Badge variant="secondary" className="text-xs">
-                            {donation.status}
-                          </Badge>
-                        </div>
-                      </div>
-                    ))}
+                      ))
+                    )}
                   </div>
                   <Button variant="ghost" className="w-full mt-4">
                     View All Donations

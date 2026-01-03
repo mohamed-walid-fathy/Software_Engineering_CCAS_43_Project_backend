@@ -1,21 +1,99 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Layout } from "@/components/layout/Layout";
 import { CampaignCard } from "@/components/campaigns/CampaignCard";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { mockCampaigns } from "@/data/mockCampaigns";
-import { Heart, Users, Globe, Shield, ArrowRight, Sparkles, TrendingUp, Award } from "lucide-react";
+import { campaignsApi, donationsApi } from "@/lib/api"; // Updated import
+import { Heart, Users, Globe, ArrowRight, Sparkles, TrendingUp, Award, Shield, Loader2 } from "lucide-react";
 
-const stats = [
-  { icon: Heart, value: "$12.5M+", label: "Raised" },
-  { icon: Users, value: "50K+", label: "Donors" },
-  { icon: Globe, value: "120+", label: "Countries" },
-  { icon: Award, value: "1,200+", label: "Campaigns" },
+// Initial static stats as fallback/placeholder
+const initialStats = [
+  { icon: Heart, value: "$0", label: "Raised" },
+  { icon: Users, value: "0", label: "Donors" },
+  { icon: Globe, value: "5", label: "Countries" },
+  { icon: Award, value: "0", label: "Campaigns" },
 ];
 
+interface Campaign {
+  id: string;
+  title: string;
+  description: string;
+  currentAmount: number;
+  goalAmount: number;
+  donorCount: number;
+  daysLeft: number;
+  category: string;
+  charity: string;
+}
+
 export default function HomePage() {
-  const featuredCampaigns = mockCampaigns.slice(0, 3);
-  const urgentCampaigns = mockCampaigns.filter((c) => c.isUrgent);
+  const [featuredCampaigns, setFeaturedCampaigns] = useState<Campaign[]>([]);
+  const [urgentCampaigns, setUrgentCampaigns] = useState<Campaign[]>([]);
+  const [platformStats, setPlatformStats] = useState(initialStats);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+
+        // 1. Fetch Stats
+        const statsRes = await donationsApi.getPlatformStats();
+        if (statsRes.data) {
+          const s = (statsRes.data as any).data;
+          if (s) {
+            setPlatformStats([
+              { icon: Heart, value: `$${(s.total_raised || 0).toLocaleString()}`, label: "Raised" },
+              { icon: Users, value: (s.total_donors || 0).toLocaleString(), label: "Donors" },
+              { icon: Globe, value: (s.countries_count || 5).toString(), label: "Countries" },
+              { icon: Award, value: (s.total_campaigns || 0).toLocaleString(), label: "Campaigns" },
+            ]);
+          }
+        }
+
+        // 2. Fetch Campaigns
+        const response = await campaignsApi.getAll({ limit: 6 });
+        const result = response.data;
+        const allCampaigns = result?.data || [];
+
+        const mappedCampaigns = allCampaigns
+          .filter((c: any) => c.Charity?.['Verified Status'] === true) // Only verified charities
+          .map((c: any) => {
+            const id = c.campaign_id || c.id;
+            const target = c.target_amount || 1000;
+            const current = c.current_amount || 0;
+            const charityName = c.Charity?.name || "Verified Charity";
+            const daysLeft = c.end_date
+              ? Math.max(0, Math.ceil((new Date(c.end_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
+              : 30;
+
+            return {
+              id: String(id),
+              title: c.title,
+              description: c.description || "",
+              currentAmount: parseFloat(current),
+              goalAmount: parseFloat(target),
+              donorCount: c.donor_count || 0,
+              daysLeft: daysLeft,
+              category: c.category || "General",
+              charity: charityName
+            };
+          });
+
+        setFeaturedCampaigns(mappedCampaigns.slice(0, 3));
+        setUrgentCampaigns(mappedCampaigns.slice(3, 6));
+      } catch (error) {
+        console.error("Failed to fetch homepage data", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, []);
 
   return (
     <Layout>
@@ -26,14 +104,14 @@ export default function HomePage() {
           <div className="mx-auto max-w-3xl text-center">
             <Badge variant="secondary" className="mb-6 animate-fade-in">
               <Sparkles className="mr-1 h-3 w-3" />
-              Trusted by 50,000+ donors worldwide
+              Trusted by {platformStats.find(s => s.label === "Donors")?.value || "thousands of"} donors worldwide
             </Badge>
             <h1 className="mb-6 text-4xl font-bold tracking-tight text-foreground md:text-6xl animate-fade-in" style={{ animationDelay: "0.1s" }}>
               Make a Difference,{" "}
               <span className="text-primary">One Donation</span> at a Time
             </h1>
             <p className="mb-8 text-lg text-muted-foreground md:text-xl animate-fade-in" style={{ animationDelay: "0.2s" }}>
-              Join thousands of compassionate donors supporting verified charities. 
+              Join thousands of compassionate donors supporting verified charities.
               100% transparent. 100% impactful. Start giving today.
             </p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4 animate-fade-in" style={{ animationDelay: "0.3s" }}>
@@ -51,7 +129,7 @@ export default function HomePage() {
 
           {/* Stats */}
           <div className="mt-16 grid grid-cols-2 gap-6 md:grid-cols-4 animate-fade-in" style={{ animationDelay: "0.4s" }}>
-            {stats.map((stat) => (
+            {platformStats.map((stat) => (
               <div key={stat.label} className="text-center">
                 <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
                   <stat.icon className="h-6 w-6 text-primary" />
@@ -65,51 +143,67 @@ export default function HomePage() {
       </section>
 
       {/* Urgent Campaigns */}
-      {urgentCampaigns.length > 0 && (
-        <section className="border-b bg-destructive/5 py-12">
-          <div className="container">
-            <div className="mb-8 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-warning/20 animate-pulse-soft">
-                  <TrendingUp className="h-5 w-5 text-warning" />
+      {loading ? (
+        <div className="py-24 text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" />
+          <p className="text-muted-foreground mt-2">Loading campaigns...</p>
+        </div>
+      ) : (
+        <>
+          {urgentCampaigns.length > 0 && (
+            <section className="border-b bg-destructive/5 py-12">
+              <div className="container">
+                <div className="mb-8 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-warning/20 animate-pulse-soft">
+                      <TrendingUp className="h-5 w-5 text-warning" />
+                    </div>
+                    <div>
+                      <h2 className="text-xl font-bold">Urgent Campaigns</h2>
+                      <p className="text-sm text-muted-foreground">These campaigns need your immediate support</p>
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <h2 className="text-xl font-bold">Urgent Campaigns</h2>
-                  <p className="text-sm text-muted-foreground">These campaigns need your immediate support</p>
+                <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                  {urgentCampaigns.map((campaign) => (
+                    <CampaignCard key={campaign.id} campaign={campaign} />
+                  ))}
                 </div>
               </div>
-            </div>
-            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-              {urgentCampaigns.map((campaign) => (
-                <CampaignCard key={campaign.id} campaign={campaign} />
-              ))}
-            </div>
-          </div>
-        </section>
-      )}
+            </section>
+          )}
 
-      {/* Featured Campaigns */}
-      <section className="py-16 md:py-24">
-        <div className="container">
-          <div className="mb-10 flex items-center justify-between">
-            <div>
-              <h2 className="text-2xl font-bold md:text-3xl">Featured Campaigns</h2>
-              <p className="text-muted-foreground">Discover causes that matter</p>
+          {/* Featured Campaigns */}
+          <section className="py-16 md:py-24">
+            <div className="container">
+              <div className="mb-10 flex items-center justify-between">
+                <div>
+                  <h2 className="text-2xl font-bold md:text-3xl">Featured Campaigns</h2>
+                  <p className="text-muted-foreground">Discover causes that matter</p>
+                </div>
+                <Button variant="outline" asChild>
+                  <Link href="/campaigns/browse">
+                    View All
+                    <ArrowRight className="ml-2 h-4 w-4" />
+                  </Link>
+                </Button>
+              </div>
+
+              {featuredCampaigns.length === 0 ? (
+                <div className="text-center py-10 bg-muted/20 rounded-lg">
+                  <p>No campaigns found right now. Check back later!</p>
+                </div>
+              ) : (
+                <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                  {featuredCampaigns.map((campaign) => (
+                    <CampaignCard key={campaign.id} campaign={campaign} />
+                  ))}
+                </div>
+              )}
             </div>
-            <Button variant="outline" asChild>
-              <Link href="/campaigns/browse">
-                View All
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </Link>
-            </Button>
-          </div>
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {featuredCampaigns.map((campaign) => (
-              <CampaignCard key={campaign.id} campaign={campaign} />
-            ))}
-          </div>
-        </div>
-      </section>
+          </section>
+        </>
+      )}
 
       {/* Trust Section */}
       <section className="border-t bg-muted/30 py-16 md:py-24">
@@ -180,4 +274,3 @@ export default function HomePage() {
     </Layout>
   );
 }
-

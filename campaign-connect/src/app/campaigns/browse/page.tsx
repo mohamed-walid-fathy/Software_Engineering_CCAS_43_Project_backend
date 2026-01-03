@@ -1,21 +1,78 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Layout } from "@/components/layout/Layout";
 import { CampaignCard } from "@/components/campaigns/CampaignCard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { mockCampaigns, categories } from "@/data/mockCampaigns";
-import { Search, SlidersHorizontal, Grid, List } from "lucide-react";
+import { campaignsApi } from "@/lib/api";
+import { Search, SlidersHorizontal, Grid, List, Loader2 } from "lucide-react";
+
+const categories = ["All Categories", "Medical", "Education", "Emergency", "Environment", "Community", "Technology"];
+
+interface Campaign {
+  id: string;
+  title: string;
+  description: string;
+  currentAmount: number;
+  goalAmount: number;
+  donorCount: number;
+  daysLeft: number;
+  category: string;
+  charity: string;
+}
 
 export default function Browse() {
+  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("All Categories");
   const [sortBy, setSortBy] = useState("newest");
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
 
-  const filteredCampaigns = mockCampaigns.filter((campaign) => {
+  useEffect(() => {
+    const fetchCampaigns = async () => {
+      try {
+        const response = await campaignsApi.getAll();
+        const result = response.data;
+        const allCampaigns = result?.data || [];
+
+        const mappedCampaigns = allCampaigns
+          .filter((c: any) => c.Charity?.['Verified Status'] === true) // Only verified charities
+          .map((c: any) => {
+            const id = c.campaign_id || c.id;
+            const target = c.target_amount || 1000;
+            const current = c.current_amount || 0;
+            const charityName = c.Charity?.name || "Verified Charity";
+            const daysLeft = c.end_date
+              ? Math.max(0, Math.ceil((new Date(c.end_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
+              : 30;
+
+            return {
+              id: String(id),
+              title: c.title,
+              description: c.description || "",
+              currentAmount: parseFloat(current),
+              goalAmount: parseFloat(target),
+              donorCount: c.donor_count || 0,
+              daysLeft: daysLeft,
+              category: c.category || "General",
+              charity: charityName
+            };
+          });
+        setCampaigns(mappedCampaigns);
+      } catch (error) {
+        console.error("Failed to load campaigns", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchCampaigns();
+  }, []);
+
+  const filteredCampaigns = campaigns.filter((campaign) => {
     const matchesSearch =
       campaign.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       campaign.description.toLowerCase().includes(searchQuery.toLowerCase());
@@ -27,13 +84,13 @@ export default function Browse() {
   const sortedCampaigns = [...filteredCampaigns].sort((a, b) => {
     switch (sortBy) {
       case "most-funded":
-        return b.currentAmount - a.currentAmount;
+        return (b.currentAmount) - (a.currentAmount);
       case "ending-soon":
-        return a.daysLeft - b.daysLeft;
-      case "most-donors":
-        return b.donorCount - a.donorCount;
+        return (a.daysLeft || 0) - (b.daysLeft || 0);
+      // case "most-donors":
+      //     return (b.donorCount || 0) - (a.donorCount || 0);
       default:
-        return 0;
+        return 0; // Default to API order (likely newest/id)
     }
   });
 
@@ -81,7 +138,7 @@ export default function Browse() {
                   <SelectItem value="newest">Newest</SelectItem>
                   <SelectItem value="most-funded">Most Funded</SelectItem>
                   <SelectItem value="ending-soon">Ending Soon</SelectItem>
-                  <SelectItem value="most-donors">Most Donors</SelectItem>
+                  {/* <SelectItem value="most-donors">Most Donors</SelectItem> */}
                 </SelectContent>
               </Select>
               <div className="flex rounded-md border">
@@ -104,36 +161,44 @@ export default function Browse() {
           </div>
 
           {/* Results */}
-          <div className="mb-4 flex items-center justify-between">
-            <p className="text-sm text-muted-foreground">
-              Showing {sortedCampaigns.length} campaign{sortedCampaigns.length !== 1 ? "s" : ""}
-            </p>
-          </div>
-
-          {sortedCampaigns.length > 0 ? (
-            <div
-              className={
-                viewMode === "grid"
-                  ? "grid gap-6 sm:grid-cols-2 lg:grid-cols-3"
-                  : "flex flex-col gap-4"
-              }
-            >
-              {sortedCampaigns.map((campaign) => (
-                <CampaignCard key={campaign.id} campaign={campaign} />
-              ))}
+          {loading ? (
+            <div className="py-24 text-center">
+              <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" />
+              <p className="text-muted-foreground mt-2">Loading campaigns...</p>
             </div>
           ) : (
-            <div className="flex flex-col items-center justify-center rounded-xl border bg-card py-16">
-              <Search className="mb-4 h-12 w-12 text-muted-foreground/50" />
-              <h3 className="mb-2 text-lg font-semibold">No campaigns found</h3>
-              <p className="text-muted-foreground">
-                Try adjusting your search or filter criteria
-              </p>
-            </div>
+            <>
+              <div className="mb-4 flex items-center justify-between">
+                <p className="text-sm text-muted-foreground">
+                  Showing {sortedCampaigns.length} campaign{sortedCampaigns.length !== 1 ? "s" : ""}
+                </p>
+              </div>
+
+              {sortedCampaigns.length > 0 ? (
+                <div
+                  className={
+                    viewMode === "grid"
+                      ? "grid gap-6 sm:grid-cols-2 lg:grid-cols-3"
+                      : "flex flex-col gap-4"
+                  }
+                >
+                  {sortedCampaigns.map((campaign) => (
+                    <CampaignCard key={campaign.id} campaign={campaign} />
+                  ))}
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center rounded-xl border bg-card py-16">
+                  <Search className="mb-4 h-12 w-12 text-muted-foreground/50" />
+                  <h3 className="mb-2 text-lg font-semibold">No campaigns found</h3>
+                  <p className="text-muted-foreground">
+                    Try adjusting your search or filter criteria
+                  </p>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
     </Layout>
   );
 }
-

@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { Layout } from "@/components/layout/Layout";
@@ -8,22 +9,70 @@ import { ProgressBar } from "@/components/campaigns/ProgressBar";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { mockCampaigns } from "@/data/mockCampaigns";
-import { ArrowLeft, Shield, Lock, CreditCard } from "lucide-react";
+import { ArrowLeft, Shield, Lock, CreditCard, Heart, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { campaignsApi } from "@/lib/api";
+
+interface Campaign {
+  id: string;
+  title: string;
+  description: string;
+  target_amount: number;
+  current_amount: number;
+  category: string;
+  charities?: {
+    name: string;
+  };
+}
 
 export default function Donate() {
   const params = useParams();
   const campaignId = params.campaignId as string;
-  const campaign = mockCampaigns.find((c) => c.id === campaignId);
+  const [campaign, setCampaign] = useState<Campaign | null>(null);
+  const [loading, setLoading] = useState(true);
   const { toast } = useToast();
 
+  useEffect(() => {
+    const fetchCampaign = async () => {
+      try {
+        setLoading(true);
+        const response = await campaignsApi.getById(campaignId);
+        if (response.data) {
+          const rawData = (response.data as any).data || response.data;
+          setCampaign({
+            ...rawData,
+            id: String(rawData.campaign_id || rawData.id),
+            target_amount: parseFloat(rawData.target_amount || rawData.goal_amount || 0),
+            current_amount: parseFloat(rawData.current_amount || 0),
+            charities: rawData.Charity || rawData.charities
+          });
+        }
+      } catch (err) {
+        console.error("Failed to fetch campaign:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (campaignId) {
+      fetchCampaign();
+    }
+  }, [campaignId]);
+
   const handleDonation = (amount: number) => {
-    toast({
-      title: "Thank You! 💚",
-      description: `Your donation of $${amount.toLocaleString()} has been processed successfully.`,
-    });
+    // This will be handled by the DonationForm now but keeping for breadcrumb/toast if needed
   };
+
+  if (loading) {
+    return (
+      <Layout>
+        <div className="container flex min-h-[60vh] flex-col items-center justify-center py-16">
+          <Loader2 className="h-10 w-10 animate-spin text-primary" />
+          <p className="mt-4 text-muted-foreground">Loading campaign details...</p>
+        </div>
+      </Layout>
+    );
+  }
 
   if (!campaign) {
     return (
@@ -57,25 +106,21 @@ export default function Donate() {
               <Card>
                 <CardContent className="pt-6">
                   <div className="flex gap-4">
-                    <div className="h-20 w-32 flex-shrink-0 overflow-hidden rounded-lg">
-                      <img
-                        src={campaign.image}
-                        alt={campaign.title}
-                        className="h-full w-full object-cover"
-                      />
+                    <div className="h-20 w-32 flex-shrink-0 overflow-hidden rounded-lg bg-success/20 flex items-center justify-center">
+                      <Heart className="h-8 w-8 text-success opacity-50" />
                     </div>
                     <div className="flex-1">
                       <Badge variant="secondary" className="mb-2">
                         {campaign.category}
                       </Badge>
                       <h2 className="font-semibold line-clamp-2">{campaign.title}</h2>
-                      <p className="text-sm text-muted-foreground">{campaign.charity}</p>
+                      <p className="text-sm text-muted-foreground">{campaign.charities?.name || "Verified Charity"}</p>
                     </div>
                   </div>
                   <div className="mt-6">
                     <ProgressBar
-                      current={campaign.currentAmount}
-                      goal={campaign.goalAmount}
+                      current={campaign.current_amount}
+                      goal={campaign.target_amount}
                       size="md"
                     />
                   </div>
@@ -142,7 +187,11 @@ export default function Donate() {
 
             {/* Donation Form */}
             <div>
-              <DonationForm campaignTitle={campaign.title} onSubmit={handleDonation} />
+              <DonationForm
+                campaignTitle={campaign.title}
+                campaignId={campaign.id}
+                onSubmit={handleDonation}
+              />
             </div>
           </div>
         </div>

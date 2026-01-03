@@ -48,14 +48,14 @@ export const getCharities = async (req, res, next) => {
   try {
     const { page = 1, limit = 20, search, is_verified } = req.query;
 
-    let query = supabase.from('charities').select('*', { count: 'exact' });
+    let query = supabase.from('Charity').select('*', { count: 'exact' });
 
     if (search) {
       query = query.or(`name.ilike.%${search}%,email.ilike.%${search}%`);
     }
 
     if (is_verified !== undefined) {
-      query = query.eq('is_verified', is_verified === 'true');
+      query = query.eq('Verified Status', is_verified === 'true');
     }
 
     const from = (page - 1) * limit;
@@ -91,9 +91,9 @@ export const getCharities = async (req, res, next) => {
 export const getPendingCharities = async (req, res, next) => {
   try {
     const { data, error } = await supabase
-      .from('charities')
+      .from('Charity')
       .select('*')
-      .eq('is_verified', false)
+      .eq('Verified Status', false)
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -114,9 +114,9 @@ export const approveCharity = async (req, res, next) => {
     const { id } = req.params;
 
     const { data, error } = await supabase
-      .from('charities')
-      .update({ is_verified: true })
-      .eq('id', id)
+      .from('Charity')
+      .update({ 'Verified Status': true })
+      .eq('Charity_id', id)
       .select()
       .single();
 
@@ -124,13 +124,17 @@ export const approveCharity = async (req, res, next) => {
       return errorResponse(res, 'Failed to approve charity', error?.message, 400);
     }
 
-    // Log admin action
-    await supabase.from('admin_actions').insert({
-      admin_id: req.user.id,
-      action: 'approve_charity',
-      target_id: id,
-      details: { charity_name: data.name }
-    });
+    // Log admin action (safely)
+    try {
+      await supabase.from('admin_actions').insert({
+        admin_id: req.user?.id || 'system',
+        action: 'approve_charity',
+        target_id: id,
+        details: { charity_name: data.name }
+      });
+    } catch (e) {
+      console.warn('Failed to log admin action:', e.message);
+    }
 
     return successResponse(res, data, 'Charity approved successfully', 200);
   } catch (error) {
@@ -148,9 +152,9 @@ export const rejectCharity = async (req, res, next) => {
 
     // Get charity info before deletion/update
     const { data: charity } = await supabase
-      .from('charities')
+      .from('Charity')
       .select('*')
-      .eq('id', id)
+      .eq('Charity_id', id)
       .single();
 
     if (!charity) {
@@ -161,21 +165,25 @@ export const rejectCharity = async (req, res, next) => {
     // Option 2: Mark as rejected (add rejected field)
     // For now, we'll delete
     const { error } = await supabase
-      .from('charities')
+      .from('Charity')
       .delete()
-      .eq('id', id);
+      .eq('Charity_id', id);
 
     if (error) {
       return errorResponse(res, 'Failed to reject charity', error.message, 400);
     }
 
-    // Log admin action
-    await supabase.from('admin_actions').insert({
-      admin_id: req.user.id,
-      action: 'reject_charity',
-      target_id: id,
-      details: { charity_name: charity.name, reason: reason || 'No reason provided' }
-    });
+    // Log admin action (safely)
+    try {
+      await supabase.from('admin_actions').insert({
+        admin_id: req.user?.id || 'system',
+        action: 'reject_charity',
+        target_id: id,
+        details: { charity_name: charity.name, reason: reason || 'No reason provided' }
+      });
+    } catch (e) {
+      console.warn('Failed to log admin action:', e.message);
+    }
 
     return successResponse(res, null, 'Charity rejected successfully', 200);
   } catch (error) {
@@ -202,9 +210,9 @@ export const getUserById = async (req, res, next) => {
     if (!user) {
       // Try charities
       const result = await supabase
-        .from('charities')
+        .from('Charity')
         .select('*')
-        .eq('id', id)
+        .eq('Charity_id', id)
         .single();
 
       user = result.data;
@@ -246,8 +254,8 @@ export const updateUser = async (req, res, next) => {
       .eq('donor_id', id)
       .single();
 
-    const tableName = donor ? 'donor' : 'charities';
-    const idField = donor ? 'donor_id' : 'id';
+    const tableName = donor ? 'donor' : 'Charity';
+    const idField = donor ? 'donor_id' : 'Charity_id';
 
     const { data, error } = await supabase
       .from(tableName)
@@ -333,7 +341,7 @@ export const getUserCampaigns = async (req, res, next) => {
     // No authentication required - allow updates
 
     const { data, error } = await supabase
-      .from('campaigns')
+      .from('Campaign')
       .select('*')
       .eq('charity_id', id)
       .order('created_at', { ascending: false });
