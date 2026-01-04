@@ -20,12 +20,7 @@ export const getCampaigns = async (req, res, next) => {
       .from('Campaign')
       .select(`
         *,
-        Charity (
-          Charity_id,
-          name,
-          email,
-          Verified Status
-        )
+        Charity:charity_id (*)
       `);
 
     // Apply filters
@@ -34,13 +29,13 @@ export const getCampaigns = async (req, res, next) => {
     }
 
     if (charity_id) {
-      query = query.eq('Charity_id', charity_id);
+      query = query.eq('charity_id', charity_id);
     }
 
-    // Default to active campaigns only (unless explicitly requesting other statuses)
+    // Default to active campaigns only (unless explicitly requesting other statuses or filtering by charity)
     if (status) {
       query = query.eq('status', status);
-    } else {
+    } else if (!charity_id) {
       query = query.eq('status', 'active');
     }
 
@@ -72,6 +67,8 @@ export const getCampaigns = async (req, res, next) => {
     const { data: campaigns, error } = await query;
 
     if (error) {
+      console.error('Supabase error in getCampaigns:', error);
+      console.error('Error details:', JSON.stringify(error, null, 2));
       return errorResponse(res, 'Failed to fetch campaigns', error.message || JSON.stringify(error), 500);
     }
 
@@ -452,6 +449,33 @@ export const flagCampaign = async (req, res, next) => {
     }
 
     return successResponse(res, data, 'Campaign flagged successfully', 201);
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Reapply campaign (charity)
+ */
+export const reapplyCampaign = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    const { data, error } = await supabase
+      .from('Campaign')
+      .update({
+        status: 'pending',
+        rejection_reason: null
+      })
+      .eq('campaign_id', id)
+      .select()
+      .single();
+
+    if (error || !data) {
+      return errorResponse(res, 'Failed to reapply campaign', error?.message, 400);
+    }
+
+    return successResponse(res, data, 'Campaign re-submitted successfully', 200);
   } catch (error) {
     next(error);
   }

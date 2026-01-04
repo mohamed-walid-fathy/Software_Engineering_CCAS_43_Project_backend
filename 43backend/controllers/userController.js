@@ -86,6 +86,29 @@ export const getCharities = async (req, res, next) => {
 };
 
 /**
+ * Get charity by ID
+ */
+export const getCharityById = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    const { data, error } = await supabase
+      .from('Charity')
+      .select('*')
+      .eq('Charity_id', id)
+      .single();
+
+    if (error || !data) {
+      return errorResponse(res, 'Charity not found', error?.message, 404);
+    }
+
+    return successResponse(res, data, 'Charity details retrieved successfully', 200);
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
  * Get pending charity approvals (admin only)
  */
 export const getPendingCharities = async (req, res, next) => {
@@ -150,7 +173,11 @@ export const rejectCharity = async (req, res, next) => {
     const { id } = req.params;
     const { reason } = req.body;
 
-    // Get charity info before deletion/update
+    if (!reason) {
+      return errorResponse(res, 'Rejection reason is required', null, 400);
+    }
+
+    // Get charity info before update
     const { data: charity } = await supabase
       .from('Charity')
       .select('*')
@@ -161,12 +188,13 @@ export const rejectCharity = async (req, res, next) => {
       return errorResponse(res, 'Charity not found', null, 404);
     }
 
-    // Option 1: Delete the charity
-    // Option 2: Mark as rejected (add rejected field)
-    // For now, we'll delete
+    // Update charity with rejection reason instead of deleting
     const { error } = await supabase
       .from('Charity')
-      .delete()
+      .update({
+        'Verified Status': false,
+        rejection_reason: reason
+      })
       .eq('Charity_id', id);
 
     if (error) {
@@ -179,13 +207,54 @@ export const rejectCharity = async (req, res, next) => {
         admin_id: req.user?.id || 'system',
         action: 'reject_charity',
         target_id: id,
-        details: { charity_name: charity.name, reason: reason || 'No reason provided' }
+        details: { charity_name: charity.name, reason }
       });
     } catch (e) {
       console.warn('Failed to log admin action:', e.message);
     }
 
     return successResponse(res, null, 'Charity rejected successfully', 200);
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Reapply charity after rejection
+ */
+export const reapplyCharity = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    // Get charity info
+    const { data: charity } = await supabase
+      .from('Charity')
+      .select('*')
+      .eq('Charity_id', id)
+      .single();
+
+    if (!charity) {
+      return errorResponse(res, 'Charity not found', null, 404);
+    }
+
+    if (!charity.rejection_reason) {
+      return errorResponse(res, 'Charity was not rejected', null, 400);
+    }
+
+    // Clear rejection reason and set back to pending
+    const { error } = await supabase
+      .from('Charity')
+      .update({
+        rejection_reason: null,
+        'Verified Status': false // Pending review
+      })
+      .eq('Charity_id', id);
+
+    if (error) {
+      return errorResponse(res, 'Failed to reapply charity', error.message, 400);
+    }
+
+    return successResponse(res, null, 'Charity reapplication submitted successfully', 200);
   } catch (error) {
     next(error);
   }

@@ -31,18 +31,26 @@ export const createDonation = async (req, res, next) => {
       return errorResponse(res, 'Campaign is not active', null, 400);
     }
 
-    // No authentication required - donor_id can be passed in request body or null for anonymous
-    const donor_id = req.body.donor_id || null;
+    // Handle donor_id - schema has NOT NULL constraint
+    // For anonymous donations, we use donor_id = 1 as placeholder
+    let donor_id = req.body.donor_id;
+
+    if (!donor_id) {
+      // For anonymous donations, use donor_id = 1
+      donor_id = 1;
+    }
 
     // Create donation record
+    // Note: is_anonymous is tracked by using donor_id = 1 for anonymous donations
     const donationData = {
       campaign_id,
       donor_id,
       amount: parseFloat(amount),
-      is_anonymous: is_anonymous || false,
       transaction_status: 'pending',
       payment_method
     };
+
+    console.log('Creating donation with data:', JSON.stringify(donationData, null, 2));
 
     const { data: donation, error: donationError } = await supabase
       .from('Donation')
@@ -61,6 +69,8 @@ export const createDonation = async (req, res, next) => {
 
     if (donationError) {
       console.error('Supabase error in createDonation:', donationError);
+      console.error('Error details:', JSON.stringify(donationError, null, 2));
+      console.error('Donation data that failed:', JSON.stringify(donationData, null, 2));
       return errorResponse(res, 'Failed to create donation', donationError.message, 400);
     }
 

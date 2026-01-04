@@ -186,6 +186,12 @@ export const campaignsApi = {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
   },
+
+  reapplyCampaign: async (id: string) => {
+    return apiFetch<{ message: string }>(`/api/campaigns/${id}/reapply`, {
+      method: 'PUT'
+    });
+  },
 };
 
 // Donations API functions
@@ -333,9 +339,12 @@ export const charityApi = {
   },
 
   update: async (id: string, charityData: any, token: string) => {
-    return apiFetch<{ charity: any; message: string }>(`/api/auth/profile`, {
+    return apiFetch<{ charity: any; message: string }>(`/api/charity/${id}`, {
       method: 'PUT',
-      body: JSON.stringify({ Charity_id: id, ...charityData }),
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(charityData),
     });
   },
 
@@ -346,9 +355,14 @@ export const charityApi = {
   },
 
   reject: async (id: string, reason: string) => {
-    return apiFetch<any>(`/api/users/charities/${id}/reject`, {
+    return apiFetch<{ message: string }>(`/api/users/charities/${id}/reject`, {
       method: 'POST',
       body: JSON.stringify({ reason })
+    });
+  },
+  reapply: async (id: string) => {
+    return apiFetch<{ message: string }>(`/api/users/charities/${id}/reapply`, {
+      method: 'PUT'
     });
   },
 };
@@ -372,6 +386,40 @@ export const adminApi = {
       method: 'POST'
     });
   },
+  rejectCampaign: async (id: string, reason: string) => {
+    return apiFetch<any>(`/api/admin/campaigns/${id}/reject`, {
+      method: 'POST',
+      body: JSON.stringify({ reason })
+    });
+  },
+  reapplyCampaign: async (id: string) => {
+    return apiFetch<any>(`/api/admin/campaigns/${id}/reapply`, {
+      method: 'PUT'
+    });
+  },
+};
+
+// Reports API functions
+export const reportsApi = {
+  generate: async (data: {
+    charity_id: string;
+    report_type: string;
+    period_start: string;
+    period_end: string;
+  }) => {
+    return apiFetch<any>('/api/reports/generate', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  getByCharityId: async (charityId: string) => {
+    return apiFetch<any[]>(`/api/reports/charity/${charityId}`);
+  },
+
+  getById: async (id: string) => {
+    return apiFetch<any>(`/api/reports/${id}`);
+  },
 };
 
 export default {
@@ -381,6 +429,7 @@ export default {
   usersApi,
   charityApi,
   adminApi,
+  reportsApi,
 };
 
 // Helper wrapper functions for specific dashboard needs

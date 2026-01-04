@@ -71,8 +71,11 @@ export default function AdminDashboard() {
 
         // 2. Fetch Pending Charities
         try {
+          // Filter out rejected charities client-side if API doesn't support it, or rely on API
           const charitiesRes = await charityApi.getAll({ verified: false });
-          setPendingCharities((charitiesRes.data as any)?.data || []);
+          const allPending = (charitiesRes.data as any)?.data || [];
+          // Filter out those with rejection_reason
+          setPendingCharities(allPending.filter((c: any) => !c.rejection_reason));
         } catch (e) {
           console.error("Failed to fetch pending charities", e);
         }
@@ -399,7 +402,21 @@ export default function AdminDashboard() {
                             )}
                             Approve
                           </Button>
-                          <Button variant="destructive" size="sm">
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={async () => {
+                              const reason = prompt("Enter rejection reason:");
+                              if (!reason) return;
+                              try {
+                                const res = await adminApi.rejectCampaign(campaign.campaign_id, reason);
+                                if (res.error) throw new Error(res.error);
+                                window.location.reload();
+                              } catch (e: any) {
+                                alert(e.message);
+                              }
+                            }}
+                          >
                             <Ban className="mr-1 h-4 w-4" />
                             Reject
                           </Button>

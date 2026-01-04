@@ -154,16 +154,6 @@ export function DonationForm({ campaignTitle, campaignId, onSubmit }: DonationFo
 
           {/* Options */}
           <div className="space-y-3">
-            {/* <div className="flex items-center space-x-2">
-              <Checkbox
-                id="monthly"
-                checked={isMonthly}
-                onCheckedChange={(checked) => setIsMonthly(checked as boolean)}
-              />
-              <Label htmlFor="monthly" className="text-sm font-normal cursor-pointer">
-                Make this a monthly donation
-              </Label>
-            </div> */}
             <div className="flex items-center space-x-2">
               <Checkbox
                 id="anonymous"
@@ -246,7 +236,7 @@ export function DonationForm({ campaignTitle, campaignId, onSubmit }: DonationFo
             ) : (
               <>
                 <Lock className="mr-2 h-4 w-4" />
-                Donate ${selectedAmount?.toLocaleString() || 0} {isMonthly ? "Monthly" : ""}
+                Donate ${selectedAmount?.toLocaleString() || 0}
               </>
             )}
           </Button>

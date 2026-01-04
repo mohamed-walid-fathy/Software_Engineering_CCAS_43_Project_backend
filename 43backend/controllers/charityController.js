@@ -115,3 +115,49 @@ export const getMonthlyReport = async (req, res, next) => {
 		next(error);
 	}
 };
+
+/**
+ * Update charity details and resubmit for verification
+ */
+export const updateCharityDetails = async (req, res, next) => {
+	try {
+		const { id } = req.params;
+		const updates = req.body;
+
+		// Prevent updating sensitive fields directly if needed, but for now we trust the client to send valid fields
+		// We explicitly reset rejection_reason to null and Verified Status to false (pending)
+		// to signify a resubmission.
+
+		// Filter out fields that shouldn't be updated directly via this endpoint if necessary
+		// For now, we mix in the status reset:
+		const payload = {
+			...updates,
+			rejection_reason: null,
+			'Verified Status': false // Reset to pending
+		};
+
+		// Remove immutable or unwanted fields
+		delete payload.Charity_id;
+		delete payload.phone; // We are using email instead of phone as per request
+		delete payload.id;
+		delete payload.role;
+		delete payload.created_at;
+		delete payload.email; // Usually we don't allow email change here without verification
+
+		const { data, error } = await supabase
+			.from('Charity')
+			.update(payload)
+			.eq('Charity_id', id)
+			.select()
+			.single();
+
+		if (error) {
+			return errorResponse(res, 'Failed to update charity details', error.message, 400);
+		}
+
+		return successResponse(res, data, 'Charity details updated and resubmitted for verification', 200);
+
+	} catch (error) {
+		next(error);
+	}
+};

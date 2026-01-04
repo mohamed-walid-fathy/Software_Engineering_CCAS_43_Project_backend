@@ -214,17 +214,6 @@ export default function DonorDashboard() {
                 </CardContent>
               </Card>
             </div>
-
-            {/* Saved Campaigns (Can be expanded similarly) */}
-            <div>
-              <Card>
-                <CardHeader><CardTitle>Saved</CardTitle></CardHeader>
-                <CardContent>
-                  <p className="text-sm text-muted-foreground">Discover new campaigns to follow.</p>
-                  <Button variant="outline" className="w-full mt-4" asChild><Link href="/campaigns/browse">Discover</Link></Button>
-                </CardContent>
-              </Card>
-            </div>
           </div>
         </div>
       </div>

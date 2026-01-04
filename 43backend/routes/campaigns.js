@@ -14,6 +14,7 @@ router.post('/:id/pause', campaignController.pauseCampaign);
 router.post('/:id/resume', campaignController.resumeCampaign);
 router.get('/:id/analytics', campaignController.getCampaignAnalytics);
 router.post('/:id/flag', campaignController.flagCampaign);
+router.put('/:id/reapply', campaignController.reapplyCampaign);
 
 export default router;
 

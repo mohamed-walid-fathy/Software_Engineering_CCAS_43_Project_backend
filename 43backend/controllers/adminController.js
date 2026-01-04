@@ -33,13 +33,14 @@ export const getStats = async (req, res, next) => {
       .select('*', { count: 'exact', head: true })
       .eq('Verified Status', true);
 
-    // Get pending reviews
+    // Get pending reviews (exclude rejected)
     let pendingCharities = 0;
     try {
       const { count } = await supabase
         .from('Charity')
         .select('*', { count: 'exact', head: true })
-        .eq('Verified Status', false);
+        .eq('Verified Status', false)
+        .is('rejection_reason', null); // Only count as pending if NOT rejected
       pendingCharities = count || 0;
     } catch (e) {
       console.warn('Failed to fetch pending charities count:', e.message);
@@ -320,7 +321,11 @@ export const getPendingCampaigns = async (req, res, next) => {
       .from('Campaign')
       .select(`
         *,
-        Charity (*)
+        Charity:charity_id (
+          Charity_id,
+          name,
+          email
+        )
       `)
       .eq('status', 'pending');
 
@@ -344,8 +349,33 @@ export const getPendingCampaigns = async (req, res, next) => {
  */
 export const approveCampaign = async (req, res, next) => {
   try {
-    const { id } = req.params;
+    // 1. Fetch the campaign to get the charity_id
+    const { data: campaign, error: campaignError } = await supabase
+      .from('Campaign')
+      .select('charity_id, title')
+      .eq('campaign_id', id)
+      .single();
 
+    if (campaignError || !campaign) {
+      return errorResponse(res, 'Campaign not found', campaignError?.message, 404);
+    }
+
+    // 2. Fetch the associated charity to check verification status
+    const { data: charity, error: charityError } = await supabase
+      .from('Charity')
+      .select('Verified Status, name')
+      .eq('Charity_id', campaign.charity_id)
+      .single();
+
+    if (charityError || !charity) {
+      return errorResponse(res, 'Associated charity not found', charityError?.message, 404);
+    }
+
+    if (!charity['Verified Status']) {
+      return errorResponse(res, 'Cannot approve campaign: Associated charity is not verified', null, 400);
+    }
+
+    // 3. Update campaign status to active
     const { data, error } = await supabase
       .from('Campaign')
       .update({ status: 'active' })
@@ -369,6 +399,161 @@ export const approveCampaign = async (req, res, next) => {
     }
 
     return successResponse(res, data, 'Campaign approved successfully', 200);
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Reject campaign (admin)
+ */
+export const rejectCampaign = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { reason } = req.body;
+
+    if (!reason) {
+      return errorResponse(res, 'Rejection reason is required', null, 400);
+    }
+
+    // Get campaign info before update
+    const { data: campaign } = await supabase
+      .from('Campaign')
+      .select('*')
+      .eq('campaign_id', id)
+      .single();
+
+    if (!campaign) {
+      return errorResponse(res, 'Campaign not found', null, 404);
+    }
+
+    // Update campaign with rejection reason instead of deleting
+    const { data, error } = await supabase
+      .from('Campaign')
+      .update({
+        status: 'rejected',
+        rejection_reason: reason
+      })
+      .eq('campaign_id', id)
+      .select()
+      .single();
+
+    if (error || !data) {
+      return errorResponse(res, 'Failed to reject campaign', error?.message, 400);
+    }
+
+    // Log admin action (ignore if table missing)
+    try {
+      await supabase.from('admin_actions').insert({
+        admin_id: req.user?.id || 'system',
+        action: 'reject_campaign',
+        target_id: id,
+        details: { campaign_title: campaign.title, reason }
+      });
+    } catch (e) {
+      console.warn('Failed to log admin action:', e.message);
+    }
+
+    return successResponse(res, data, 'Campaign rejected successfully', 200);
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Reapply campaign after rejection
+ */
+export const reapplyCampaign = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    // Get campaign info
+    const { data: campaign } = await supabase
+      .from('Campaign')
+      .select('*')
+      .eq('campaign_id', id)
+      .single();
+
+    if (!campaign) {
+      return errorResponse(res, 'Campaign not found', null, 404);
+    }
+
+    if (!campaign.rejection_reason) {
+      return errorResponse(res, 'Campaign was not rejected', null, 400);
+    }
+
+    // Clear rejection reason and set back to pending
+    const { data, error } = await supabase
+      .from('Campaign')
+      .update({
+        rejection_reason: null,
+        status: 'pending'
+      })
+      .eq('campaign_id', id)
+      .select()
+      .single();
+
+    if (error || !data) {
+      return errorResponse(res, 'Failed to reapply campaign', error?.message, 400);
+    }
+
+    return successResponse(res, data, 'Campaign reapplication submitted successfully', 200);
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Reject charity application (admin)
+ */
+export const rejectCharity = async (req, res, next) => {
+  try {
+    const { id } = req.params; // logic expects this to be the charity's UUID (Charity_id)
+    const { reason } = req.body;
+
+    if (!reason) {
+      return errorResponse(res, 'Rejection reason is required', null, 400);
+    }
+
+    // Verify charity exists
+    const { data: charity } = await supabase
+      .from('Charity')
+      .select('Charity_id, name')
+      .eq('Charity_id', id)
+      .single();
+
+    if (!charity) {
+      return errorResponse(res, 'Charity not found', null, 404);
+    }
+
+    // Update charity status
+    const { data, error } = await supabase
+      .from('Charity')
+      .update({
+        'Verified Status': false,
+        rejection_reason: reason
+      })
+      .eq('Charity_id', id)
+      .select()
+      .single();
+
+    if (error) {
+      return errorResponse(res, 'Failed to reject charity', error.message, 400);
+    }
+
+    // Log admin action
+    try {
+      await supabase.from('admin_actions').insert({
+        admin_id: req.user?.id || 'system',
+        action: 'reject_charity',
+        target_id: id,
+        details: { charity_name: charity.name, reason }
+      });
+    } catch (e) {
+      console.warn('Failed to log admin action:', e.message);
+    }
+
+    return successResponse(res, data, 'Charity rejected successfully', 200);
   } catch (error) {
     next(error);
   }

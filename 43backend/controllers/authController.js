@@ -1,5 +1,8 @@
 import { supabase } from '../config/supabase.js';
 import { successResponse, errorResponse } from '../utils/response.js';
+import bcrypt from 'bcryptjs';
+
+const SALT_ROUNDS = 10;
 
 /**
  * Register a new user (donor or charity)
@@ -31,12 +34,15 @@ export const register = async (req, res, next) => {
         return errorResponse(res, 'Email already registered', null, 400);
       }
 
-      // Create donor with plain password
+      // Hash password
+      const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
+
+      // Create donor
       const { data: donor, error: donorError } = await supabase
         .from('donor')
         .insert({
           email,
-          password,  // ⚠️ Storing plain password
+          password: hashedPassword,
           name: name || '',
           phone: phone || null
         })
@@ -73,6 +79,9 @@ export const register = async (req, res, next) => {
         return errorResponse(res, 'Email already registered', null, 400);
       }
 
+      // Hash password
+      const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
+
       // Create charity
       const { data: charity, error: charityError } = await supabase
         .from('Charity')
@@ -81,7 +90,7 @@ export const register = async (req, res, next) => {
           name: orgName || name || '',
           description: description || null,
           'Verified Status': false,
-          Password: password // Save password for charity
+          Password: hashedPassword // Save hashed password for charity
         })
         .select()
         .single();
@@ -127,8 +136,9 @@ export const login = async (req, res, next) => {
       .single();
 
     if (donor) {
-      // Compare plain passwords
-      if (password !== donor.password) {
+      // Compare passwords
+      const isMatch = await bcrypt.compare(password, donor.password);
+      if (!isMatch) {
         return errorResponse(res, 'Invalid email or password', null, 401);
       }
 
@@ -156,8 +166,9 @@ export const login = async (req, res, next) => {
       .single();
 
     if (charity) {
-      // Compare plain passwords - Schema uses 'Password' with capital P
-      if (password !== charity.Password) {
+      // Compare passwords - Schema uses 'Password' with capital P
+      const isMatch = await bcrypt.compare(password, charity.Password);
+      if (!isMatch) {
         return errorResponse(res, 'Invalid email or password', null, 401);
       }
 
@@ -183,7 +194,8 @@ export const login = async (req, res, next) => {
       .single();
 
     if (adminUser) {
-      if (password !== adminUser.password) { // Schema uses 'password' lowercase for admin
+      const isMatch = await bcrypt.compare(password, adminUser.password);
+      if (!isMatch) { // Schema uses 'password' lowercase for admin
         return errorResponse(res, 'Invalid email or password', null, 401);
       }
 
@@ -388,9 +400,10 @@ export const resetPassword = async (req, res, next) => {
       .single();
 
     if (donor) {
+      const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
       const { error } = await supabase
         .from('donor')
-        .update({ password })
+        .update({ password: hashedPassword })
         .eq('donor_id', donor.donor_id);
 
       if (error) {
@@ -408,9 +421,10 @@ export const resetPassword = async (req, res, next) => {
       .single();
 
     if (charity) {
+      const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
       const { error } = await supabase
         .from('Charity')
-        .update({ Password: password }) // Schema uses 'Password' capital P
+        .update({ Password: hashedPassword }) // Schema uses 'Password' capital P
         .eq('Charity_id', charity.Charity_id);
 
       if (error) {
@@ -457,8 +471,11 @@ export const changePassword = async (req, res, next) => {
     // 1. Check Admin Table
     const { data: adminUser } = await supabase.from('admin').select('*').or(`name.eq.${email},admin_id.eq.${email}`).single();
     if (adminUser) {
-      if (adminUser.password !== oldPassword) return errorResponse(res, 'Invalid old password', null, 401);
-      const { error } = await supabase.from('admin').update({ password: newPassword }).eq('admin_id', adminUser.admin_id);
+      const isMatch = await bcrypt.compare(oldPassword, adminUser.password);
+      if (!isMatch) return errorResponse(res, 'Invalid old password', null, 401);
+
+      const hashedPassword = await bcrypt.hash(newPassword, SALT_ROUNDS);
+      const { error } = await supabase.from('admin').update({ password: hashedPassword }).eq('admin_id', adminUser.admin_id);
       if (error) throw error;
       return successResponse(res, null, 'Password changed successfully', 200);
     }
@@ -466,8 +483,11 @@ export const changePassword = async (req, res, next) => {
     // 2. Check Donor Table
     const { data: donor } = await supabase.from('donor').select('*').eq('email', email).single();
     if (donor) {
-      if (donor.password !== oldPassword) return errorResponse(res, 'Invalid old password', null, 401);
-      const { error } = await supabase.from('donor').update({ password: newPassword }).eq('donor_id', donor.donor_id);
+      const isMatch = await bcrypt.compare(oldPassword, donor.password);
+      if (!isMatch) return errorResponse(res, 'Invalid old password', null, 401);
+
+      const hashedPassword = await bcrypt.hash(newPassword, SALT_ROUNDS);
+      const { error } = await supabase.from('donor').update({ password: hashedPassword }).eq('donor_id', donor.donor_id);
       if (error) throw error;
       return successResponse(res, null, 'Password changed successfully', 200);
     }
@@ -475,8 +495,11 @@ export const changePassword = async (req, res, next) => {
     // 3. Check Charity Table
     const { data: charity } = await supabase.from('Charity').select('*').eq('email', email).single();
     if (charity) {
-      if (charity.Password !== oldPassword) return errorResponse(res, 'Invalid old password', null, 401);
-      const { error } = await supabase.from('Charity').update({ Password: newPassword }).eq('Charity_id', charity.Charity_id);
+      const isMatch = await bcrypt.compare(oldPassword, charity.Password);
+      if (!isMatch) return errorResponse(res, 'Invalid old password', null, 401);
+
+      const hashedPassword = await bcrypt.hash(newPassword, SALT_ROUNDS);
+      const { error } = await supabase.from('Charity').update({ Password: hashedPassword }).eq('Charity_id', charity.Charity_id);
       if (error) throw error;
       return successResponse(res, null, 'Password changed successfully', 200);
     }
