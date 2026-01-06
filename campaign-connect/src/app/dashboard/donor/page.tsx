@@ -125,6 +125,9 @@ export default function DonorDashboard() {
   };
 
   const getUserInitials = () => {
+    if (user?.first_name) {
+      return (user.first_name[0] + (user.last_name ? user.last_name[0] : "")).toUpperCase();
+    }
     if (!user?.name) return "U";
     return user.name.split(" ").map((n: string) => n[0]).join("").toUpperCase();
   };
@@ -152,7 +155,7 @@ export default function DonorDashboard() {
                 </AvatarFallback>
               </Avatar>
               <div>
-                <h1 className="text-2xl font-bold">Welcome back, {user.name}!</h1>
+                <h1 className="text-2xl font-bold">Welcome back, {user.first_name || user.name}!</h1>
                 <p className="text-muted-foreground">Your generosity is making a difference</p>
               </div>
             </div>

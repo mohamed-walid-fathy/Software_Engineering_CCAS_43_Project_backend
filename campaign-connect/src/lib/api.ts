@@ -72,7 +72,9 @@ export const authApi = {
   register: async (data: {
     email: string;
     password: string;
-    name?: string;
+    first_name?: string;
+    last_name?: string;
+    name?: string; // For backward compatibility if needed temporarily
     phone?: string;
     accountType: 'donor' | 'charity';
     orgName?: string;
@@ -81,15 +83,28 @@ export const authApi = {
   }) => {
     console.log('authApi.register called with:', { ...data, password: '***' });
 
+    let first_name = data.first_name || '';
+    let last_name = data.last_name || '';
+
+    if (!first_name && data.name) {
+      const names = data.name.split(' ');
+      first_name = names[0];
+      last_name = names.slice(1).join(' ') || ' ';
+    }
+
+    if (!first_name && data.orgName) {
+      const names = data.orgName.split(' ');
+      first_name = names[0];
+      last_name = names.slice(1).join(' ') || ' ';
+    }
+
     // Transform accountType to userType for backend
     const backendData = {
       email: data.email,
       password: data.password,
-      userType: data.accountType,  // ✅ Transform to userType
-      name: data.name,
-      phone: data.phone,
-      orgName: data.orgName,
-      registrationNumber: data.registrationNumber,
+      userType: data.accountType,
+      first_name,
+      last_name,
       description: data.description,
     };
 
@@ -284,6 +299,12 @@ export const usersApi = {
   },
 
   updateProfile: async (userData: any, email: string) => {
+    // Handle name splitting if provided
+    if (userData.name && !userData.first_name) {
+      const names = userData.name.split(' ');
+      userData.first_name = names[0];
+      userData.last_name = names.slice(1).join(' ') || ' ';
+    }
     return apiFetch<{ data: any; message: string }>('/api/auth/profile', {
       method: 'PUT',
       body: JSON.stringify({ email, ...userData }),
@@ -327,6 +348,10 @@ export const charityApi = {
       total_amount: number;
       unique_donors: number;
     }>(`/api/charity/${id}/report`);
+  },
+
+  getCustomReport: async (id: string, start: string, end: string) => {
+    return apiFetch<any>(`/api/charity/${id}/custom-report?start=${start}&end=${end}`);
   },
   create: async (charityData: any, token: string) => {
     return apiFetch<{ charity: any; message: string }>('/api/charity', {
@@ -399,29 +424,6 @@ export const adminApi = {
   },
 };
 
-// Reports API functions
-export const reportsApi = {
-  generate: async (data: {
-    charity_id: string;
-    report_type: string;
-    period_start: string;
-    period_end: string;
-  }) => {
-    return apiFetch<any>('/api/reports/generate', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
-  },
-
-  getByCharityId: async (charityId: string) => {
-    return apiFetch<any[]>(`/api/reports/charity/${charityId}`);
-  },
-
-  getById: async (id: string) => {
-    return apiFetch<any>(`/api/reports/${id}`);
-  },
-};
-
 export default {
   authApi,
   campaignsApi,
@@ -429,7 +431,6 @@ export default {
   usersApi,
   charityApi,
   adminApi,
-  reportsApi,
 };
 
 // Helper wrapper functions for specific dashboard needs
@@ -458,7 +459,7 @@ export const fetchDonationHistory = async (donorId: string) => {
       amount: d.amount,
       status: d.transaction_status,
       created_at: d.donation_date,
-      campaign_title: d.Campaign?.title,
+      campaign_title: (d.campaign || d.Campaign)?.title,
       campaign_id: d.campaign_id
     }));
   }

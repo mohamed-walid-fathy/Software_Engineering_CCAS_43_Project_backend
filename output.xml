@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<robot generator="Robot 7.4 (Python 3.13.7 on win32)" generated="2026-01-06T15:32:52.171728" rpa="false" schemaversion="5">
+<suite id="s1" name="Robot Tests" source="D:\CCAS43SWFINALPROJ\tests\robot_tests.robot">
+<test id="s1-t1" name="WD-001 Register New Donor" line="10">
+<kw name="Evaluate" owner="BuiltIn">
+<msg time="2026-01-06T15:32:52.342146" level="INFO">${random_id} = 53457</msg>
+<var>${random_id}</var>
+<arg>"".join(__import__('random').choice('0123456789') for _ in range(5))</arg>
+<doc>Evaluates the given expression in Python and returns the result.</doc>
+<status status="PASS" start="2026-01-06T15:32:52.339712" elapsed="0.002529"/>
+</kw>
+<kw name="Create Dictionary" owner="BuiltIn">
+<msg time="2026-01-06T15:32:52.343908" level="INFO">${payload} = {'email': 'robot_53457@test.com', 'password': 'robotpass', 'userType': 'donor', 'name': 'Robot Donor'}</msg>
+<var>${payload}</var>
+<arg>email=robot_${random_id}@test.com</arg>
+<arg>password=robotpass</arg>
+<arg>userType=donor</arg>
+<arg>name=Robot Donor</arg>
+<doc>Creates and returns a dictionary based on the given ``items``.</doc>
+<status status="PASS" start="2026-01-06T15:32:52.342596" elapsed="0.001387"/>
+</kw>
+<kw name="POST">
+<msg time="2026-01-06T15:32:52.346066" level="FAIL">No keyword with name 'POST' found.</msg>
+<var>${response}</var>
+<arg>${BASE_URL}/auth/register</arg>
+<arg>json=${payload}</arg>
+<status status="FAIL" start="2026-01-06T15:32:52.345935" elapsed="0.000261">No keyword with name 'POST' found.</status>
+</kw>
+<kw name="Should Be Equal As Strings" owner="BuiltIn">
+<arg>${response.status_code}</arg>
+<arg>201</arg>
+<doc>Fails if objects are unequal after converting them to strings.</doc>
+<status status="NOT RUN" start="2026-01-06T15:32:52.346536" elapsed="0.000070"/>
+</kw>
+<kw name="Dictionary Should Contain Value" owner="Collections">
+<arg>${response.json()['data']['user']}</arg>
+<arg>donor</arg>
+<doc>Fails if ``value`` is not found from ``dictionary``.</doc>
+<status status="NOT RUN" start="2026-01-06T15:32:52.346831" elapsed="0.000047"/>
+</kw>
+<doc>Test registration of a new donor</doc>
+<status status="FAIL" start="2026-01-06T15:32:52.338221" elapsed="0.009010">No keyword with name 'POST' found.</status>
+</test>
+<test id="s1-t2" name="WD-003 Login With Robot" line="18">
+<kw name="Create Dictionary" owner="BuiltIn">
+<msg time="2026-01-06T15:32:52.349277" level="INFO">${payload} = {'email': 'robot_12345@test.com', 'password': 'robotpass'}</msg>
+<var>${payload}</var>
+<arg>email=robot_12345@test.com</arg>
+<arg>password=robotpass</arg>
+<doc>Creates and returns a dictionary based on the given ``items``.</doc>
+<status status="PASS" start="2026-01-06T15:32:52.348445" elapsed="0.000902"/>
+</kw>
+<kw name="Create Dictionary" owner="BuiltIn">
+<msg time="2026-01-06T15:32:52.350182" level="INFO">${register_payload} = {'email': 'robot_12345@test.com', 'password': 'robotpass', 'userType': 'donor'}</msg>
+<var>${register_payload}</var>
+<arg>email=robot_12345@test.com</arg>
+<arg>password=robotpass</arg>
+<arg>userType=donor</arg>
+<doc>Creates and returns a dictionary based on the given ``items``.</doc>
+<status status="PASS" start="2026-01-06T15:32:52.349561" elapsed="0.000679"/>
+</kw>
+<kw name="POST">
+<msg time="2026-01-06T15:32:52.351739" level="FAIL">No keyword with name 'POST' found.</msg>
+<arg>${BASE_URL}/auth/register</arg>
+<arg>json=${register_payload}</arg>
+<arg>expected_status=any</arg>
+<status status="FAIL" start="2026-01-06T15:32:52.351665" elapsed="0.000154">No keyword with name 'POST' found.</status>
+</kw>
+<kw name="POST">
+<var>${response}</var>
+<arg>${BASE_URL}/auth/login</arg>
+<arg>json=${payload}</arg>
+<status status="NOT RUN" start="2026-01-06T15:32:52.352057" elapsed="0.000040"/>
+</kw>
+<kw name="Should Be Equal As Strings" owner="BuiltIn">
+<arg>${response.status_code}</arg>
+<arg>200</arg>
+<doc>Fails if objects are unequal after converting them to strings.</doc>
+<status status="NOT RUN" start="2026-01-06T15:32:52.352281" elapsed="0.000041"/>
+</kw>
+<kw name="Should Be Equal As Strings" owner="BuiltIn">
+<arg>${response.json()['data']['user']['role']}</arg>
+<arg>donor</arg>
+<doc>Fails if objects are unequal after converting them to strings.</doc>
+<status status="NOT RUN" start="2026-01-06T15:32:52.352484" elapsed="0.000051"/>
+</kw>
+<doc>Test robot login</doc>
+<status status="FAIL" start="2026-01-06T15:32:52.347730" elapsed="0.005083">No keyword with name 'POST' found.</status>
+</test>
+<status status="FAIL" start="2026-01-06T15:32:52.174535" elapsed="0.179091"/>
+</suite>
+<statistics>
+<total>
+<stat pass="0" fail="2" skip="0">All Tests</stat>
+</total>
+<tag>
+</tag>
+<suite>
+<stat name="Robot Tests" id="s1" pass="0" fail="2" skip="0">Robot Tests</stat>
+</suite>
+</statistics>
+<errors>
+<msg time="2026-01-06T15:32:52.310183" level="ERROR">Error in file 'D:\CCAS43SWFINALPROJ\tests\robot_tests.robot' on line 2: Importing library 'RequestsLibrary' failed: ModuleNotFoundError: No module named 'RequestsLibrary'
+Traceback (most recent call last):
+  None
+PYTHONPATH:
+  C:\Users\7amada\AppData\Local\Programs\Python\Python313\Scripts\robot.exe
+  C:\Users\7amada\AppData\Local\Programs\Python\Python313\python313.zip
+  C:\Users\7amada\AppData\Local\Programs\Python\Python313\DLLs
+  C:\Users\7amada\AppData\Local\Programs\Python\Python313\Lib
+  C:\Users\7amada\AppData\Local\Programs\Python\Python313
+  C:\Users\7amada\AppData\Local\Programs\Python\Python313\Lib\site-packages</msg>
+</errors>
+</robot>

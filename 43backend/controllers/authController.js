@@ -37,14 +37,19 @@ export const register = async (req, res, next) => {
       // Hash password
       const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
 
+      // Split name safely
+      const names = (name || '').split(' ');
+      const first_name = names[0] || '';
+      const last_name = names.slice(1).join(' ') || ' ';
+
       // Create donor
       const { data: donor, error: donorError } = await supabase
         .from('donor')
         .insert({
           email,
           password: hashedPassword,
-          name: name || '',
-          phone: phone || null
+          first_name,
+          last_name
         })
         .select()
         .single();
@@ -70,7 +75,7 @@ export const register = async (req, res, next) => {
     } else if (type === 'charity') {
       // Check if charity already exists
       const { data: existingCharity } = await supabase
-        .from('Charity')
+        .from('charity')
         .select('email')
         .eq('email', email)
         .single();
@@ -82,15 +87,21 @@ export const register = async (req, res, next) => {
       // Hash password
       const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
 
+      // Split name safely
+      const names = (orgName || name || '').split(' ');
+      const first_name = names[0] || '';
+      const last_name = names.slice(1).join(' ') || ' ';
+
       // Create charity
       const { data: charity, error: charityError } = await supabase
-        .from('Charity')
+        .from('charity')
         .insert({
           email,
-          name: orgName || name || '',
+          first_name,
+          last_name,
           description: description || null,
-          'Verified Status': false,
-          Password: hashedPassword // Save hashed password for charity
+          verified_status: 'pending',
+          password: hashedPassword // Save hashed password for charity
         })
         .select()
         .single();
@@ -160,14 +171,14 @@ export const login = async (req, res, next) => {
 
     // Check Charity table
     const { data: charity } = await supabase
-      .from('Charity')
+      .from('charity')
       .select('*')
       .eq('email', email)
       .single();
 
     if (charity) {
-      // Compare passwords - Schema uses 'Password' with capital P
-      const isMatch = await bcrypt.compare(password, charity.Password);
+      // Compare passwords
+      const isMatch = await bcrypt.compare(password, charity.password);
       if (!isMatch) {
         return errorResponse(res, 'Invalid email or password', null, 401);
       }
@@ -177,7 +188,7 @@ export const login = async (req, res, next) => {
         {
           user: {
             ...charity,
-            id: charity.Charity_id, // Normalize ID
+            id: charity.charity_id, // Normalize ID
             role: 'charity'
           }
         },
@@ -190,7 +201,7 @@ export const login = async (req, res, next) => {
     const { data: adminUser } = await supabase
       .from('admin') // Using 'admin' table as per schema
       .select('*')
-      .or(`name.eq.${email},admin_id.eq.${email}`) // Allow login via name or admin_id
+      .eq('email', email)
       .single();
 
     if (adminUser) {
@@ -265,7 +276,7 @@ export const getCurrentUser = async (req, res, next) => {
 
     // Check Charity table
     const { data: charity } = await supabase
-      .from('Charity')
+      .from('charity')
       .select('*')
       .eq('email', email)
       .single();
@@ -303,7 +314,7 @@ export const updateProfile = async (req, res, next) => {
     // Remove sensitive fields
     delete updates.password;
     delete updates.donor_id;
-    delete updates.Charity_id;
+    delete updates.charity_id;
 
     // Try updating donor
     const { data: donor } = await supabase
@@ -330,16 +341,16 @@ export const updateProfile = async (req, res, next) => {
 
     // Try updating charity
     const { data: charity } = await supabase
-      .from('Charity')
-      .select('Charity_id')
+      .from('charity')
+      .select('charity_id')
       .eq('email', email)
       .single();
 
     if (charity) {
       const { data, error } = await supabase
-        .from('Charity')
+        .from('charity')
         .update(updates)
-        .eq('Charity_id', charity.Charity_id)
+        .eq('charity_id', charity.charity_id)
         .select()
         .single();
 
@@ -415,17 +426,17 @@ export const resetPassword = async (req, res, next) => {
 
     // Try updating charity password
     const { data: charity } = await supabase
-      .from('Charity')
-      .select('Charity_id')
+      .from('charity')
+      .select('charity_id')
       .eq('email', email)
       .single();
 
     if (charity) {
       const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
       const { error } = await supabase
-        .from('Charity')
-        .update({ Password: hashedPassword }) // Schema uses 'Password' capital P
-        .eq('Charity_id', charity.Charity_id);
+        .from('charity')
+        .update({ password: hashedPassword })
+        .eq('charity_id', charity.charity_id);
 
       if (error) {
         return errorResponse(res, 'Failed to reset password', error.message, 400);
@@ -469,7 +480,7 @@ export const changePassword = async (req, res, next) => {
     }
 
     // 1. Check Admin Table
-    const { data: adminUser } = await supabase.from('admin').select('*').or(`name.eq.${email},admin_id.eq.${email}`).single();
+    const { data: adminUser } = await supabase.from('admin').select('*').eq('email', email).single();
     if (adminUser) {
       const isMatch = await bcrypt.compare(oldPassword, adminUser.password);
       if (!isMatch) return errorResponse(res, 'Invalid old password', null, 401);
@@ -493,13 +504,13 @@ export const changePassword = async (req, res, next) => {
     }
 
     // 3. Check Charity Table
-    const { data: charity } = await supabase.from('Charity').select('*').eq('email', email).single();
+    const { data: charity } = await supabase.from('charity').select('*').eq('email', email).single();
     if (charity) {
-      const isMatch = await bcrypt.compare(oldPassword, charity.Password);
+      const isMatch = await bcrypt.compare(oldPassword, charity.password);
       if (!isMatch) return errorResponse(res, 'Invalid old password', null, 401);
 
       const hashedPassword = await bcrypt.hash(newPassword, SALT_ROUNDS);
-      const { error } = await supabase.from('Charity').update({ Password: hashedPassword }).eq('Charity_id', charity.Charity_id);
+      const { error } = await supabase.from('charity').update({ password: hashedPassword }).eq('charity_id', charity.charity_id);
       if (error) throw error;
       return successResponse(res, null, 'Password changed successfully', 200);
     }

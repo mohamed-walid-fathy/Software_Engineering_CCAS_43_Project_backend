@@ -86,9 +86,10 @@ export default function Login() {
         throw new Error("No user data returned from server");
       }
 
+      const displayName = userData.first_name ? `${userData.first_name} ${userData.last_name || ''}`.trim() : (userData.name || 'User');
       toast({
         title: "Login Successful",
-        description: `Welcome back, ${userData.name || 'User'}!`,
+        description: `Welcome back, ${displayName}!`,
       });
 
       // Store user data in localStorage
@@ -97,7 +98,10 @@ export default function Login() {
         email: userData.email,
         role: userData.role || 'donor',
         donor_id: userData.donor_id,
-        name: userData.name
+        charity_id: userData.charity_id,
+        first_name: userData.first_name,
+        last_name: userData.last_name,
+        name: userData.first_name ? `${userData.first_name} ${userData.last_name || ''}`.trim() : userData.name
       };
 
       console.log("Storing user:", userToStore);

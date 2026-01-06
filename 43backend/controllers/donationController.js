@@ -18,7 +18,7 @@ export const createDonation = async (req, res, next) => {
 
     // Get campaign to verify it exists and is active
     const { data: campaign, error: campaignError } = await supabase
-      .from('Campaign')
+      .from('campaign')
       .select('*')
       .eq('campaign_id', campaign_id)
       .single();
@@ -41,23 +41,23 @@ export const createDonation = async (req, res, next) => {
     }
 
     // Create donation record
-    // Note: is_anonymous is tracked by using donor_id = 1 for anonymous donations
     const donationData = {
       campaign_id,
       donor_id,
       amount: parseFloat(amount),
       transaction_status: 'pending',
-      payment_method
+      payment_method: ['credit_card', 'paypal', 'bank_transfer', 'debit_card'].includes(payment_method) ? payment_method : 'credit_card',
+      transaction_reference: `TRX-${Date.now()}-${Math.floor(Math.random() * 1000)}`
     };
 
     console.log('Creating donation with data:', JSON.stringify(donationData, null, 2));
 
     const { data: donation, error: donationError } = await supabase
-      .from('Donation')
+      .from('donation')
       .insert(donationData)
       .select(`
         *,
-        Campaign:campaign_id (
+        campaign:campaign_id (
           campaign_id,
           title,
           description,
@@ -81,7 +81,7 @@ export const createDonation = async (req, res, next) => {
     // Update campaign current_amount atomically
     const newAmount = parseFloat(campaign.current_amount) + parseFloat(amount);
     const { error: updateError } = await supabase
-      .from('Campaign')
+      .from('campaign')
       .update({
         current_amount: newAmount
       })
@@ -93,7 +93,7 @@ export const createDonation = async (req, res, next) => {
 
     // Update donation status to completed
     const { data: updatedDonation } = await supabase
-      .from('Donation')
+      .from('donation')
       .update({ transaction_status: 'completed' })
       .eq('donation_id', donation.donation_id)
       .select()
@@ -128,10 +128,10 @@ export const getDonations = async (req, res, next) => {
     } = req.query;
 
     let query = supabase
-      .from('Donation')
+      .from('donation')
       .select(`
           *,
-          Campaign!campaign_id (
+          campaign:campaign_id (
             campaign_id,
             title,
             description,
@@ -157,7 +157,7 @@ export const getDonations = async (req, res, next) => {
 
     if (charity_id) {
       const { data: campaigns } = await supabase
-        .from('Campaign')
+        .from('campaign')
         .select('campaign_id')
         .eq('charity_id', charity_id);
 
@@ -182,7 +182,7 @@ export const getDonations = async (req, res, next) => {
 
     // Get total count
     const { count } = await supabase
-      .from('Donation')
+      .from('donation')
       .select('*', { count: 'exact', head: true });
 
     // Apply pagination
@@ -202,20 +202,21 @@ export const getDonations = async (req, res, next) => {
     // Fetch donor data for each donation
     const donationsWithDonors = await Promise.all(
       donations.map(async (donation) => {
-        if (donation.donor_id && !donation.is_anonymous) {
+        if (donation.donor_id && donation.donor_id !== 1) { // 1 is anonymous placeholder
           const { data: donor } = await supabase
             .from('donor')
-            .select('donor_id, name, email')
+            .select('donor_id, first_name, last_name, email')
             .eq('donor_id', donation.donor_id)
             .single();
 
           if (donor) {
             donation.donor = donor;
           }
-        } else if (donation.is_anonymous) {
+        } else if (donation.donor_id === 1) {
           donation.donor = {
-            donor_id: null,
-            name: 'Anonymous',
+            donor_id: 1,
+            first_name: 'Anonymous',
+            last_name: 'Donor',
             email: null
           };
         }
@@ -250,10 +251,10 @@ export const getDonationById = async (req, res, next) => {
     const { id } = req.params;
 
     const { data: donation, error } = await supabase
-      .from('Donation')
+      .from('donation')
       .select(`
         *,
-        Campaign:campaign_id (
+        campaign:campaign_id (
           campaign_id,
           title,
           description,
@@ -268,7 +269,7 @@ export const getDonationById = async (req, res, next) => {
     if (donation && donation.donor_id) {
       const { data: donor } = await supabase
         .from('donor')
-        .select('donor_id, name, email')
+        .select('donor_id, first_name, last_name, email')
         .eq('donor_id', donation.donor_id)
         .single();
 
@@ -283,10 +284,11 @@ export const getDonationById = async (req, res, next) => {
 
     // No authentication required - show all data
     // Hide donor info for anonymous donations
-    if (donation.is_anonymous && donation.donor) {
+    if (donation.donor_id === 1 && donation.donor) {
       donation.donor = {
         id: null,
-        name: 'Anonymous',
+        first_name: 'Anonymous',
+        last_name: 'Donor',
         email: null
       };
     }
@@ -306,10 +308,10 @@ export const refundDonation = async (req, res, next) => {
 
     // Get donation
     const { data: donation, error: donationError } = await supabase
-      .from('Donation')
+      .from('donation')
       .select(`
         *,
-        Campaign:campaign_id (
+        campaign:campaign_id (
           campaign_id,
           title,
           description,
@@ -332,7 +334,7 @@ export const refundDonation = async (req, res, next) => {
 
     // Update donation status
     const { data: updatedDonation, error: updateError } = await supabase
-      .from('Donation')
+      .from('donation')
       .update({ transaction_status: 'refunded' })
       .eq('donation_id', id)
       .select()
@@ -343,9 +345,9 @@ export const refundDonation = async (req, res, next) => {
     }
 
     // Update campaign current_amount
-    const newAmount = Math.max(0, parseFloat(donation.Campaign.current_amount) - parseFloat(donation.amount));
+    const newAmount = Math.max(0, parseFloat(donation.campaign.current_amount) - parseFloat(donation.amount));
     await supabase
-      .from('Campaign')
+      .from('campaign')
       .update({
         current_amount: newAmount
       })
@@ -369,7 +371,7 @@ export const getDonationStats = async (req, res, next) => {
   try {
     const { campaign_id, charity_id, donor_id } = req.query;
 
-    let query = supabase.from('Donation').select('*').in('transaction_status', ['completed', 'Done']);
+    let query = supabase.from('donation').select('*').in('transaction_status', ['completed', 'Done']);
 
     if (campaign_id) {
       query = query.eq('campaign_id', campaign_id);
@@ -381,7 +383,7 @@ export const getDonationStats = async (req, res, next) => {
 
     if (charity_id) {
       const { data: campaigns } = await supabase
-        .from('Campaign')
+        .from('campaign')
         .select('campaign_id')
         .eq('charity_id', charity_id);
 
@@ -429,7 +431,7 @@ export const getPlatformStats = async (req, res, next) => {
   try {
     // 1. Get total raised and unique donors from Donation table
     const { data: donations, error: donationError } = await supabase
-      .from('Donation')
+      .from('donation')
       .select('amount, donor_id')
       .in('transaction_status', ['completed', 'Done']);
 
@@ -440,7 +442,7 @@ export const getPlatformStats = async (req, res, next) => {
 
     // 2. Get active campaigns count
     const { count: activeCampaigns, error: campaignError } = await supabase
-      .from('Campaign')
+      .from('campaign')
       .select('*', { count: 'exact', head: true })
       .eq('status', 'active');
 
@@ -448,9 +450,9 @@ export const getPlatformStats = async (req, res, next) => {
 
     // 3. Get verified charities count
     const { count: verifiedCharities, error: charityError } = await supabase
-      .from('Charity')
+      .from('charity')
       .select('*', { count: 'exact', head: true })
-      .eq('Verified Status', true);
+      .eq('verified_status', 'verified');
 
     if (charityError) throw charityError;
 
@@ -497,10 +499,10 @@ export const generateReceipt = async (req, res, next) => {
 
     // Get donation
     const { data: donation, error } = await supabase
-      .from('Donation')
+      .from('donation')
       .select(`
         *,
-        Campaign:campaign_id (
+        campaign:campaign_id (
           campaign_id,
           title,
           description,
@@ -509,7 +511,8 @@ export const generateReceipt = async (req, res, next) => {
         ),
         donor (
           donor_id,
-          name,
+          first_name,
+          last_name,
           email
         )
       `)

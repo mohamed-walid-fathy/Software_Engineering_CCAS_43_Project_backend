@@ -60,12 +60,13 @@ export default function HomePage() {
         const allCampaigns = result?.data || [];
 
         const mappedCampaigns = allCampaigns
-          .filter((c: any) => c.Charity?.['Verified Status'] === true) // Only verified charities
+          .filter((c: any) => (c.charity || c.Charity)?.verified_status === 'verified') // Only verified charities
           .map((c: any) => {
             const id = c.campaign_id || c.id;
             const target = c.target_amount || 1000;
             const current = c.current_amount || 0;
-            const charityName = c.Charity?.name || "Verified Charity";
+            const charity = c.charity || c.Charity;
+            const charityName = charity?.first_name ? `${charity.first_name} ${charity.last_name || ""}` : (charity?.name || "Verified Charity");
             const daysLeft = c.end_date
               ? Math.max(0, Math.ceil((new Date(c.end_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
               : 30;

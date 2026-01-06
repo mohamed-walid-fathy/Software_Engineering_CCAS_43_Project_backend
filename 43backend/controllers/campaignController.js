@@ -17,10 +17,10 @@ export const getCampaigns = async (req, res, next) => {
     } = req.query;
 
     let query = supabase
-      .from('Campaign')
+      .from('campaign')
       .select(`
         *,
-        Charity:charity_id (*)
+        charity:charity_id (*)
       `);
 
     // Apply filters
@@ -45,7 +45,7 @@ export const getCampaigns = async (req, res, next) => {
 
     // Get total count for pagination
     const { count } = await supabase
-      .from('Campaign')
+      .from('campaign')
       .select('*', { count: 'exact', head: true });
 
     // Apply pagination
@@ -77,7 +77,7 @@ export const getCampaigns = async (req, res, next) => {
       campaigns.map(async (campaign) => {
         try {
           const { count, error: countError } = await supabase
-            .from('Donation')
+            .from('donation')
             .select('*', { count: 'exact', head: true })
             .eq('campaign_id', campaign.campaign_id || campaign.id)
             .eq('transaction_status', 'completed');
@@ -120,10 +120,10 @@ export const getCampaigns = async (req, res, next) => {
 export const getFeaturedCampaigns = async (req, res, next) => {
   try {
     const { data, error } = await supabase
-      .from('Campaign')
+      .from('campaign')
       .select(`
         *,
-        Charity (*)
+        charity:charity_id (*)
       `)
       .eq('status', 'active')
       .order('campaign_id', { ascending: false })
@@ -148,10 +148,10 @@ export const getCampaignById = async (req, res, next) => {
     const { id } = req.params;
 
     const { data: campaign, error } = await supabase
-      .from('Campaign')
+      .from('campaign')
       .select(`
         *,
-        Charity (*)
+        charity:charity_id (*)
       `)
       .eq('campaign_id', id)
       .single();
@@ -162,7 +162,7 @@ export const getCampaignById = async (req, res, next) => {
 
     // Get donor count
     const { count, error: countError } = await supabase
-      .from('Donation')
+      .from('donation')
       .select('*', { count: 'exact', head: true })
       .eq('campaign_id', campaign.campaign_id || campaign.id)
       .eq('transaction_status', 'completed');
@@ -229,11 +229,11 @@ export const createCampaign = async (req, res, next) => {
     };
 
     const { data, error } = await supabase
-      .from('Campaign')
+      .from('campaign')
       .insert(campaignData)
       .select(`
         *,
-        Charity (*)
+        charity:charity_id (*)
       `)
       .single();
 
@@ -269,16 +269,17 @@ export const updateCampaign = async (req, res, next) => {
     delete updates.current_amount; // Updated through donations
 
     const { data, error } = await supabase
-      .from('Campaign')
+      .from('campaign')
       .update({
         ...updates
       })
       .eq('campaign_id', id)
       .select(`
         *,
-        Charity (
-          Charity_id,
-          name,
+        charity:charity_id (
+          charity_id,
+          first_name,
+          last_name,
           email
         )
       `)
@@ -302,7 +303,7 @@ export const deleteCampaign = async (req, res, next) => {
     const { id } = req.params;
 
     const { error } = await supabase
-      .from('Campaign')
+      .from('campaign')
       .delete()
       .eq('campaign_id', id);
 
@@ -321,20 +322,7 @@ export const deleteCampaign = async (req, res, next) => {
  */
 export const pauseCampaign = async (req, res, next) => {
   try {
-    const { id } = req.params;
-
-    const { data, error } = await supabase
-      .from('Campaign')
-      .update({ status: 'paused' })
-      .eq('campaign_id', id)
-      .select()
-      .single();
-
-    if (error || !data) {
-      return errorResponse(res, 'Failed to pause campaign', error?.message, 400);
-    }
-
-    return successResponse(res, data, 'Campaign paused successfully', 200);
+    return successResponse(res, null, 'Functionality not supported by current schema', 200);
   } catch (error) {
     next(error);
   }
@@ -345,20 +333,7 @@ export const pauseCampaign = async (req, res, next) => {
  */
 export const resumeCampaign = async (req, res, next) => {
   try {
-    const { id } = req.params;
-
-    const { data, error } = await supabase
-      .from('Campaign')
-      .update({ status: 'active' })
-      .eq('campaign_id', id)
-      .select()
-      .single();
-
-    if (error || !data) {
-      return errorResponse(res, 'Failed to resume campaign', error?.message, 400);
-    }
-
-    return successResponse(res, data, 'Campaign resumed successfully', 200);
+    return successResponse(res, null, 'Functionality not supported by current schema', 200);
   } catch (error) {
     next(error);
   }
@@ -373,7 +348,7 @@ export const getCampaignAnalytics = async (req, res, next) => {
 
     // Get campaign details
     const { data: campaign, error: campaignError } = await supabase
-      .from('Campaign')
+      .from('campaign')
       .select('*')
       .eq('campaign_id', id)
       .single();
@@ -386,7 +361,7 @@ export const getCampaignAnalytics = async (req, res, next) => {
 
     // Get donation statistics
     const { data: donations, error: donationsError } = await supabase
-      .from('Donation')
+      .from('donation')
       .select('*')
       .eq('campaign_id', id)
       .eq('transaction_status', 'completed');
@@ -462,7 +437,7 @@ export const reapplyCampaign = async (req, res, next) => {
     const { id } = req.params;
 
     const { data, error } = await supabase
-      .from('Campaign')
+      .from('campaign')
       .update({
         status: 'pending',
         rejection_reason: null

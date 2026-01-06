@@ -7,11 +7,16 @@ import { useToast } from "@/hooks/use-toast";
 interface User {
 	id: string;
 	donor_id?: string;
-	Charity_id?: string;
+	charity_id?: string; // Standardized lowercase
+	Charity_id?: string; // Maintain for safety during transition
 	email: string;
-	name: string;
+	first_name: string;
+	last_name: string;
+	name?: string; // Keep for fallback if name is present but first_name isn't
 	role: string;
 	userType?: string; // 'donor' | 'charity' | 'admin'
+	verified_status?: string;
+	'Verified Status'?: boolean; // Maintain for safety during transition
 }
 
 interface AuthContextType {
@@ -92,7 +97,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 		localStorage.setItem("user", JSON.stringify(userData));
 		if (token) localStorage.setItem("token", token);
 
-		toast({ title: "Welcome back!", description: `Logged in as ${userData.name}` });
+		const displayName = userData.first_name ? `${userData.first_name} ${userData.last_name || ''}`.trim() : userData.name;
+		toast({ title: "Welcome back!", description: `Logged in as ${displayName}` });
 
 		// Redirect based on role
 		const userRole = (userData.userType || userData.role || "").toLowerCase();

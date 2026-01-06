@@ -68,10 +68,9 @@ export function DonationForm({ campaignTitle, campaignId, onSubmit }: DonationFo
         setLoading(true);
         const response = await donationsApi.create({
           campaign_id: parseInt(campaignId),
-          donor_id: isAnonymous ? null : (user?.donor_id ? parseInt(user.donor_id) : null),
+          donor_id: isAnonymous ? 1 : (user?.donor_id ? parseInt(user.donor_id) : 1), // 1 is anonymous placeholder
           amount: selectedAmount,
-          is_anonymous: isAnonymous,
-          payment_method: 'card'
+          payment_method: 'credit_card' // Default to valid enum value
         });
 
         if (response.error) {

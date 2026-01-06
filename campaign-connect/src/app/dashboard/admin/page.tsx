@@ -273,14 +273,14 @@ export default function AdminDashboard() {
                       >
                         <Avatar className="h-12 w-12">
                           <AvatarFallback className="bg-secondary">
-                            {charity.name.charAt(0)}
+                            {(charity.first_name || charity.name || "C").charAt(0)}
                           </AvatarFallback>
                         </Avatar>
                         <div className="flex-1">
-                          <p className="font-semibold">{charity.name}</p>
+                          <p className="font-semibold">{charity.first_name || charity.name} {charity.last_name || ""}</p>
                           <p className="text-sm text-muted-foreground">{charity.email}</p>
                           <p className="text-xs text-muted-foreground mt-1">
-                            Status: {charity['Verified Status'] ? 'Verified' : 'Pending'} • Applied: {new Date(charity.created_at).toLocaleDateString()}
+                            Status: {charity.verified_status || 'Pending'} • Applied: {new Date(charity.created_at).toLocaleDateString()}
                           </p>
                         </div>
                         <div className="flex gap-2">
@@ -301,7 +301,8 @@ export default function AdminDashboard() {
                             onClick={async () => {
                               try {
                                 setIsApproving(true);
-                                const res = await charityApi.approve(charity.Charity_id || charity.id);
+                                const charityId = charity.charity_id || charity.Charity_id || charity.id;
+                                const res = await charityApi.approve(charityId);
                                 if (res.error) throw new Error(res.error);
                                 window.location.reload();
                               } catch (e: any) {
@@ -320,8 +321,9 @@ export default function AdminDashboard() {
                             onClick={async () => {
                               const reason = prompt("Enter rejection reason:");
                               if (reason === null) return;
+                              const charityId = charity.charity_id || charity.Charity_id || charity.id;
                               try {
-                                const res = await charityApi.reject(charity.Charity_id || charity.id, reason);
+                                const res = await charityApi.reject(charityId, reason);
                                 if (res.error) throw new Error(res.error);
                                 window.location.reload();
                               } catch (e: any) {
@@ -363,7 +365,7 @@ export default function AdminDashboard() {
                           <p className="text-sm text-muted-foreground line-clamp-1">{campaign.description}</p>
                           <div className="flex gap-4 mt-2">
                             <Badge variant="outline">Target: ${parseFloat(campaign.target_amount).toLocaleString()}</Badge>
-                            <Badge variant="outline">Charity: {campaign.Charity?.name || 'Unknown'}</Badge>
+                            <Badge variant="outline">Charity: {campaign.charity ? `${campaign.charity.first_name} ${campaign.charity.last_name || ''}` : 'Unknown'}</Badge>
                           </div>
                         </div>
                         <div className="flex gap-2">
@@ -554,8 +556,8 @@ export default function AdminDashboard() {
                   </CardHeader>
                   <CardContent className="space-y-1 text-sm">
                     <p><span className="text-muted-foreground">Target Goal:</span> ${parseFloat(selectedCampaign.target_amount).toLocaleString()}</p>
-                    <p><span className="text-muted-foreground">Charity:</span> {selectedCampaign.Charity?.name}</p>
-                    <p><span className="text-muted-foreground">Charity Email:</span> {selectedCampaign.Charity?.email}</p>
+                    <p><span className="text-muted-foreground">Charity:</span> {selectedCampaign.charity ? `${selectedCampaign.charity.first_name} ${selectedCampaign.charity.last_name || ''}` : 'Unknown'}</p>
+                    <p><span className="text-muted-foreground">Charity Email:</span> {selectedCampaign.charity?.email}</p>
                   </CardContent>
                 </Card>
               </div>
@@ -644,7 +646,7 @@ export default function AdminDashboard() {
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-1 text-sm">
-                    <p><span className="text-muted-foreground">Name:</span> {selectedCharity.name}</p>
+                    <p><span className="text-muted-foreground">Name:</span> {selectedCharity.first_name} {selectedCharity.last_name}</p>
                     <p><span className="text-muted-foreground">Email:</span> {selectedCharity.email}</p>
                     <p><span className="text-muted-foreground">Applied:</span> {new Date(selectedCharity.created_at).toLocaleDateString()}</p>
                   </CardContent>
@@ -658,8 +660,8 @@ export default function AdminDashboard() {
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-1 text-sm">
-                    <p><span className="text-muted-foreground">Status:</span> {selectedCharity['Verified Status'] ? 'Verified' : 'Pending'}</p>
-                    <p><span className="text-muted-foreground">ID:</span> {selectedCharity.Charity_id || selectedCharity.id}</p>
+                    <p><span className="text-muted-foreground">Status:</span> {selectedCharity.verified_status || 'Pending'}</p>
+                    <p><span className="text-muted-foreground">ID:</span> {selectedCharity.charity_id || selectedCharity.Charity_id || selectedCharity.id}</p>
                   </CardContent>
                 </Card>
               </div>
@@ -689,7 +691,8 @@ export default function AdminDashboard() {
                   if (reason === null) return;
                   try {
                     setIsApproving(true);
-                    const res = await charityApi.reject(selectedCharity.Charity_id || selectedCharity.id, reason);
+                    const charityId = selectedCharity.charity_id || selectedCharity.Charity_id || selectedCharity.id;
+                    const res = await charityApi.reject(charityId, reason);
                     if (res.error) throw new Error(res.error);
                     setIsCharityReviewOpen(false);
                     window.location.reload();
@@ -709,7 +712,8 @@ export default function AdminDashboard() {
                   if (!selectedCharity) return;
                   try {
                     setIsApproving(true);
-                    const res = await charityApi.approve(selectedCharity.Charity_id || selectedCharity.id);
+                    const charityId = selectedCharity.charity_id || selectedCharity.Charity_id || selectedCharity.id;
+                    const res = await charityApi.approve(charityId);
                     if (res.error) throw new Error(res.error);
                     setIsCharityReviewOpen(false);
                     window.location.reload();

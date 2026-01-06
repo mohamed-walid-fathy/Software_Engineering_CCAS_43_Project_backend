@@ -26,9 +26,11 @@ interface Campaign {
   category: string;
   end_date: string;
   donor_count: number;
-  charities: {
-    name: string;
-    "Verified Status": boolean;
+  charity: {
+    first_name?: string;
+    last_name?: string;
+    name?: string;
+    verified_status: string;
   };
 }
 
@@ -77,6 +79,7 @@ export default function CampaignDetails() {
           });
         } else if (response.data) {
           const rawData = (response.data as any).data || response.data;
+          const charityObj = rawData.charity || rawData.Charity || rawData.charities;
           const campaignData: Campaign = {
             ...rawData,
             id: String(rawData.campaign_id || rawData.id),
@@ -84,7 +87,7 @@ export default function CampaignDetails() {
             current_amount: parseFloat(rawData.current_amount || 0),
             days_left: rawData.days_left || 30,
             donor_count: rawData.donor_count || 0,
-            charities: rawData.Charity || rawData.charities || { name: "Verified Charity", is_verified: true }
+            charity: charityObj || { name: "Verified Charity", verified_status: "verified" }
           };
           setCampaign(campaignData);
         }
@@ -159,15 +162,18 @@ export default function CampaignDetails() {
                   <Avatar className="h-10 w-10">
                     <AvatarImage src="" />
                     <AvatarFallback className="bg-primary text-primary-foreground">
-                      {campaign.charities?.name?.charAt(0) || 'C'}
+                      {(campaign.charity?.first_name || campaign.charity?.name || 'C').charAt(0)}
                     </AvatarFallback>
                   </Avatar>
                   <div>
                     <p className="text-sm text-muted-foreground">Organized by</p>
-                    <p className="font-medium">{campaign.charities?.name || 'Charity Organization'}</p>
+                    <p className="font-medium">
+                      {campaign.charity?.first_name
+                        ? `${campaign.charity.first_name} ${campaign.charity.last_name || ""}`.trim()
+                        : (campaign.charity?.name || 'Charity Organization')}
+                    </p>
                   </div>
-                  {/* @ts-ignore - 'Verified Status' has space in DB */}
-                  {campaign.charities?.['Verified Status'] && (
+                  {campaign.charity?.verified_status === 'verified' && (
                     <Badge variant="outline" className="ml-auto">
                       <CheckCircle className="mr-1 h-3 w-3 text-success" />
                       Verified

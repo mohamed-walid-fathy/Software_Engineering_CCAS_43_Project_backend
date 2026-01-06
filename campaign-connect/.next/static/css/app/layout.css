@@ -1378,6 +1378,9 @@ video {
 .grid-cols-5 {
   grid-template-columns: repeat(5, minmax(0, 1fr));
 }
+.grid-cols-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
 .flex-row {
   flex-direction: row;
 }
@@ -1493,6 +1496,11 @@ video {
 }
 .overflow-x-hidden {
   overflow-x: hidden;
+}
+.truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .whitespace-nowrap {
   white-space: nowrap;
@@ -2273,8 +2281,14 @@ video {
 .fade-in-80 {
   --tw-enter-opacity: 0.8;
 }
+.fade-in {
+  --tw-enter-opacity: 0;
+}
 .zoom-in-95 {
   --tw-enter-scale: .95;
+}
+.slide-in-from-top-4 {
+  --tw-enter-translate-y: -1rem;
 }
 .duration-1000 {
   animation-duration: 1000ms;
@@ -3396,6 +3410,10 @@ All colors MUST be HSL.
 
   .sm\:max-w-sm {
     max-width: 24rem;
+  }
+
+  .sm\:max-w-\[700px\] {
+    max-width: 700px;
   }
 
   .sm\:grid-cols-2 {

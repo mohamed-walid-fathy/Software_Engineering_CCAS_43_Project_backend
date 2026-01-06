@@ -8,7 +8,7 @@ export const getStats = async (req, res, next) => {
   try {
     // Get total donations
     const { data: donations, error: donationError } = await supabase
-      .from('Donation')
+      .from('donation')
       .select('amount')
       .in('transaction_status', ['completed', 'Done']);
 
@@ -25,22 +25,21 @@ export const getStats = async (req, res, next) => {
       .select('*', { count: 'exact', head: true });
 
     const { count: totalCharities } = await supabase
-      .from('Charity')
+      .from('charity')
       .select('*', { count: 'exact', head: true });
 
     const { count: verifiedCharities } = await supabase
-      .from('Charity')
+      .from('charity')
       .select('*', { count: 'exact', head: true })
-      .eq('Verified Status', true);
+      .eq('verified_status', 'verified');
 
     // Get pending reviews (exclude rejected)
     let pendingCharities = 0;
     try {
       const { count } = await supabase
-        .from('Charity')
+        .from('charity')
         .select('*', { count: 'exact', head: true })
-        .eq('Verified Status', false)
-        .is('rejection_reason', null); // Only count as pending if NOT rejected
+        .eq('verified_status', 'pending'); // pending if not verified or rejected
       pendingCharities = count || 0;
     } catch (e) {
       console.warn('Failed to fetch pending charities count:', e.message);
@@ -59,13 +58,13 @@ export const getStats = async (req, res, next) => {
 
     // Get active campaigns
     const { count: activeCampaigns } = await supabase
-      .from('Campaign')
+      .from('campaign')
       .select('*', { count: 'exact', head: true })
       .eq('status', 'active');
 
     // Get pending campaigns
     const { count: pendingCampaigns } = await supabase
-      .from('Campaign')
+      .from('campaign')
       .select('*', { count: 'exact', head: true })
       .eq('status', 'pending');
 
@@ -122,7 +121,7 @@ export const getFlaggedCampaigns = async (req, res, next) => {
       .from('flagged_campaigns')
       .select(`
         *,
-        Campaign:campaign_id (
+        campaign:campaign_id (
           campaign_id,
           title,
           charity_id
@@ -224,9 +223,9 @@ export const suspendCampaign = async (req, res, next) => {
     const { reason } = req.body;
 
     const { data, error } = await supabase
-      .from('Campaign')
+      .from('campaign')
       .update({
-        status: 'cancelled'
+        status: 'completed' // cancelled not in enum, using completed
       })
       .eq('campaign_id', id)
       .select()
@@ -284,15 +283,15 @@ export const getAnalytics = async (req, res, next) => {
   try {
     // Get donation trends
     const { data: donations } = await supabase
-      .from('Donation')
-      .select('amount, created_at')
+      .from('donation')
+      .select('amount, donation_date')
       .in('transaction_status', ['completed', 'Done'])
-      .order('created_at', { ascending: false })
+      .order('donation_date', { ascending: false })
       .limit(100);
 
     // Get campaign performance
     const { data: campaigns } = await supabase
-      .from('Campaign')
+      .from('campaign')
       .select('campaign_id, title, target_amount, current_amount')
       .order('current_amount', { ascending: false })
       .limit(10);
@@ -318,12 +317,13 @@ export const getPendingCampaigns = async (req, res, next) => {
   try {
     console.log('Fetching pending campaigns...');
     const { data, error } = await supabase
-      .from('Campaign')
+      .from('campaign')
       .select(`
         *,
-        Charity:charity_id (
-          Charity_id,
-          name,
+        charity:charity_id (
+          charity_id,
+          first_name,
+          last_name,
           email
         )
       `)
@@ -351,7 +351,7 @@ export const approveCampaign = async (req, res, next) => {
   try {
     // 1. Fetch the campaign to get the charity_id
     const { data: campaign, error: campaignError } = await supabase
-      .from('Campaign')
+      .from('campaign')
       .select('charity_id, title')
       .eq('campaign_id', id)
       .single();
@@ -362,22 +362,22 @@ export const approveCampaign = async (req, res, next) => {
 
     // 2. Fetch the associated charity to check verification status
     const { data: charity, error: charityError } = await supabase
-      .from('Charity')
-      .select('Verified Status, name')
-      .eq('Charity_id', campaign.charity_id)
+      .from('charity')
+      .select('verified_status, first_name, last_name')
+      .eq('charity_id', campaign.charity_id)
       .single();
 
     if (charityError || !charity) {
       return errorResponse(res, 'Associated charity not found', charityError?.message, 404);
     }
 
-    if (!charity['Verified Status']) {
+    if (charity.verified_status !== 'verified') {
       return errorResponse(res, 'Cannot approve campaign: Associated charity is not verified', null, 400);
     }
 
     // 3. Update campaign status to active
     const { data, error } = await supabase
-      .from('Campaign')
+      .from('campaign')
       .update({ status: 'active' })
       .eq('campaign_id', id)
       .select()
@@ -418,7 +418,7 @@ export const rejectCampaign = async (req, res, next) => {
 
     // Get campaign info before update
     const { data: campaign } = await supabase
-      .from('Campaign')
+      .from('campaign')
       .select('*')
       .eq('campaign_id', id)
       .single();
@@ -429,7 +429,7 @@ export const rejectCampaign = async (req, res, next) => {
 
     // Update campaign with rejection reason instead of deleting
     const { data, error } = await supabase
-      .from('Campaign')
+      .from('campaign')
       .update({
         status: 'rejected',
         rejection_reason: reason
@@ -469,7 +469,7 @@ export const reapplyCampaign = async (req, res, next) => {
 
     // Get campaign info
     const { data: campaign } = await supabase
-      .from('Campaign')
+      .from('campaign')
       .select('*')
       .eq('campaign_id', id)
       .single();
@@ -484,7 +484,7 @@ export const reapplyCampaign = async (req, res, next) => {
 
     // Clear rejection reason and set back to pending
     const { data, error } = await supabase
-      .from('Campaign')
+      .from('campaign')
       .update({
         rejection_reason: null,
         status: 'pending'
@@ -517,9 +517,9 @@ export const rejectCharity = async (req, res, next) => {
 
     // Verify charity exists
     const { data: charity } = await supabase
-      .from('Charity')
-      .select('Charity_id, name')
-      .eq('Charity_id', id)
+      .from('charity')
+      .select('charity_id, first_name, last_name')
+      .eq('charity_id', id)
       .single();
 
     if (!charity) {
@@ -528,12 +528,12 @@ export const rejectCharity = async (req, res, next) => {
 
     // Update charity status
     const { data, error } = await supabase
-      .from('Charity')
+      .from('charity')
       .update({
-        'Verified Status': false,
+        verified_status: 'rejected',
         rejection_reason: reason
       })
-      .eq('Charity_id', id)
+      .eq('charity_id', id)
       .select()
       .single();
 
@@ -547,7 +547,7 @@ export const rejectCharity = async (req, res, next) => {
         admin_id: req.user?.id || 'system',
         action: 'reject_charity',
         target_id: id,
-        details: { charity_name: charity.name, reason }
+        details: { charity_name: `${charity.first_name} ${charity.last_name}`, reason }
       });
     } catch (e) {
       console.warn('Failed to log admin action:', e.message);

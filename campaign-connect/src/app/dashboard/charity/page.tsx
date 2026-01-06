@@ -17,14 +17,14 @@ import {
 } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useAuth } from "@/context/AuthContext";
-import { campaignsApi, donationsApi, authApi, charityApi, reportsApi } from "@/lib/api";
+import { campaignsApi, donationsApi, authApi, charityApi } from "@/lib/api";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger, DialogClose } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 interface Campaign {
@@ -62,15 +62,16 @@ interface Stats {
 
 // Edit Charity Dialog (Resubmit)
 function EditCharityDialog({ user, onSuccess }: { user: any, onSuccess: () => void }) {
-  const [name, setName] = useState(user.name || "");
+  const [firstName, setFirstName] = useState(user.first_name || "");
+  const [lastName, setLastName] = useState(user.last_name || "");
   const [description, setDescription] = useState(user.description || "");
   const [email, setEmail] = useState(user.email || "");
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
 
   const handleUpdate = async () => {
-    if (!name || !description) {
-      toast({ title: "Error", description: "Name and description are required", variant: "destructive" });
+    if (!firstName || !lastName || !description) {
+      toast({ title: "Error", description: "First name, last name, and description are required", variant: "destructive" });
       return;
     }
 
@@ -81,7 +82,8 @@ function EditCharityDialog({ user, onSuccess }: { user: any, onSuccess: () => vo
       const token = localStorage.getItem("token") || "";
 
       const result = await charityApi.update(charityId, {
-        name,
+        first_name: firstName,
+        last_name: lastName,
         description,
         email
       }, token);
@@ -113,9 +115,15 @@ function EditCharityDialog({ user, onSuccess }: { user: any, onSuccess: () => vo
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-4">
-          <div className="space-y-2">
-            <Label htmlFor="c-name">Charity Name</Label>
-            <Input id="c-name" value={name} onChange={(e) => setName(e.target.value)} />
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="c-fname">First Name</Label>
+              <Input id="c-fname" value={firstName} onChange={(e) => setFirstName(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="c-lname">Last Name</Label>
+              <Input id="c-lname" value={lastName} onChange={(e) => setLastName(e.target.value)} />
+            </div>
           </div>
           <div className="space-y-2">
             <Label htmlFor="c-desc">Description</Label>
@@ -418,10 +426,9 @@ export default function CharityDashboard() {
     totalRaised: 0,
     totalDonors: 0,
     activeCampaigns: 0,
-    verifiedStatus: false
+    verifiedStatus: "pending"
   });
   const [isCreating, setIsCreating] = useState(false);
-  const [reportData, setReportData] = useState<any>(null);
   const [analyticsData, setAnalyticsData] = useState<any>(null);
   const { user, isLoading, logout } = useAuth();
   const router = useRouter();
@@ -430,7 +437,6 @@ export default function CharityDashboard() {
   const [donations, setDonations] = useState<any[]>([]);
   const [rejectionReason, setRejectionReason] = useState<string | null>(null);
   const [currentUserData, setCurrentUserData] = useState<any>(null); // To store fresh user data including rejection reason
-  const [allReports, setAllReports] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState("campaigns");
 
   useEffect(() => {
@@ -475,7 +481,7 @@ export default function CharityDashboard() {
               totalRaised: s.total_raised || 0,
               totalDonors: s.total_donors || 0,
               activeCampaigns: s.active_campaigns || 0,
-              verifiedStatus: (user as any)['Verified Status'] || false
+              verifiedStatus: (user as any).verified_status || "pending"
             });
             setAnalyticsData(s);
           }
@@ -485,15 +491,9 @@ export default function CharityDashboard() {
         const profileRes = await charityApi.getById(charityId);
         if (profileRes.data) {
           const profile = (profileRes.data as any).data || (profileRes.data as any);
-          // Depending on how getById returns data (sometimes wrapped in data, sometimes not)
-          // Debugging showed: getById returns { data: any } where data is the charity object
-
           if (profile) {
             setCurrentUserData(profile);
-            // Check for rejection: Verified Status false AND rejection_reason present
-            // Also handle case where Verified Status might be null (treated as false pending)
-            const isVerified = profile['Verified Status'] === true;
-            if (!isVerified && profile.rejection_reason) {
+            if (profile.verified_status !== 'verified' && profile.rejection_reason) {
               setRejectionReason(profile.rejection_reason);
             } else {
               setRejectionReason(null);
@@ -506,23 +506,11 @@ export default function CharityDashboard() {
         const rawDonations = (donationsRes.data as any)?.data || [];
         setDonations(rawDonations.map((d: any) => ({
           id: d.donation_id,
-          donor: d.is_anonymous ? "Anonymous" : (d.donor?.name || "Kind Donor"),
-          campaign: d.Campaign?.title || "Active Campaign",
+          donor: d.donor_id === 1 ? "Anonymous" : (d.donor ? `${d.donor.first_name} ${d.donor.last_name}` : "Kind Donor"),
+          campaign: (d.campaign || d.Campaign)?.title || "Active Campaign",
           amount: parseFloat(d.amount),
           time: new Date(d.donation_date || d.created_at).toLocaleDateString()
         })));
-
-        // 4. Fetch Report Data from new API
-        const reportsRes = await reportsApi.getByCharityId(charityId);
-        if (reportsRes.data) {
-          setAllReports((reportsRes.data as any).data || reportsRes.data);
-        }
-
-        // 5. Fetch Legacy Report Data (for summary)
-        const reportRes = await charityApi.getReport(charityId);
-        if (reportRes.data) {
-          setReportData((reportRes.data as any).data);
-        }
       } catch (err) {
         console.error("Failed to fetch charity dashboard data:", err);
         toast({ title: "Error", description: "Failed to load dashboard data.", variant: "destructive" });
@@ -570,13 +558,13 @@ export default function CharityDashboard() {
               <Avatar className="h-16 w-16">
                 <AvatarImage src="" />
                 <AvatarFallback className="bg-primary text-primary-foreground text-xl">
-                  {user.name.charAt(0)}
+                  {user.first_name ? user.first_name.charAt(0) : user.name?.charAt(0) || "C"}
                 </AvatarFallback>
               </Avatar>
               <div>
                 <div className="flex items-center gap-2">
-                  <h1 className="text-2xl font-bold">{user.name}</h1>
-                  {(user as any)['Verified Status'] && (
+                  <h1 className="text-2xl font-bold">{user.first_name} {user.last_name || user.name}</h1>
+                  {(user as any).verified_status === 'verified' && (
                     <Badge variant="outline" className="text-success border-success">Verified</Badge>
                   )}
                 </div>
@@ -611,7 +599,7 @@ export default function CharityDashboard() {
             </div>
           </div>
 
-          {/* Rejection Alert - keeping top alert for high visibility as well */}
+          {/* Rejection Alert */}
           {rejectionReason && (
             <Alert variant="destructive" className="mb-6 border-red-500/50 bg-red-500/10 text-red-600 dark:text-red-400">
               <AlertCircle className="h-4 w-4" />
@@ -679,7 +667,7 @@ export default function CharityDashboard() {
                     <p className="text-sm text-muted-foreground">Verified Status</p>
                     <div className="flex flex-col gap-1">
                       <div className="flex items-center gap-1">
-                        {stats.verifiedStatus ? (
+                        {stats.verifiedStatus === 'verified' ? (
                           <Badge variant="outline" className="text-success border-success px-1 py-0 h-5">Verified</Badge>
                         ) : rejectionReason ? (
                           <Badge variant="outline" className="text-destructive border-destructive px-1 py-0 h-5">Rejected</Badge>
@@ -828,54 +816,15 @@ export default function CharityDashboard() {
               </Card>
             </TabsContent>
 
-            <TabsContent value="donations">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Recent Donations</CardTitle>
-                  <CardDescription>Latest contributions to your campaigns</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    {donations.length === 0 ? (
-                      <div className="text-center py-12 border rounded-lg border-dashed">
-                        <Users className="h-10 w-10 text-muted-foreground/30 mx-auto mb-2" />
-                        <p className="text-muted-foreground">No donations yet</p>
-                      </div>
-                    ) : donations.map((donation) => (
-                      <div
-                        key={donation.id}
-                        className="flex items-center justify-between rounded-lg border p-4"
-                      >
-                        <div className="flex items-center gap-4">
-                          <Avatar>
-                            <AvatarFallback>{donation.donor.charAt(0)}</AvatarFallback>
-                          </Avatar>
-                          <div>
-                            <p className="font-medium">{donation.donor}</p>
-                            <p className="text-sm text-muted-foreground">{donation.campaign}</p>
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <p className="font-semibold text-success">${donation.amount.toLocaleString()}</p>
-                          <p className="text-sm text-muted-foreground">{donation.time}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            </TabsContent>
-
             <TabsContent value="reports">
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between">
                   <div>
-                    <CardTitle>Reports & Analytics</CardTitle>
-                    <CardDescription>View detailed performance metrics and monthly insights</CardDescription>
+                    <CardTitle>Performance Reports</CardTitle>
+                    <CardDescription>Generate on-the-fly reports for any date range</CardDescription>
                   </div>
                   <GenerateReportDialog
                     charityId={(user as any).charity_id || (user as any).Charity_id || user.id}
-                    onSuccess={() => window.location.reload()}
                   />
                 </CardHeader>
                 <CardContent className="space-y-8">
@@ -890,24 +839,24 @@ export default function CharityDashboard() {
                       <div className="space-y-4">
                         <div className="flex justify-between border-b pb-2">
                           <span className="text-muted-foreground">Donations</span>
-                          <span className="font-semibold">{reportData?.total_donations || 0}</span>
+                          <span className="font-semibold">{analyticsData?.total_donations || 0}</span>
                         </div>
                         <div className="flex justify-between border-b pb-2">
                           <span className="text-muted-foreground">Total Amount</span>
-                          <span className="font-semibold text-success">${(reportData?.total_amount || 0).toLocaleString()}</span>
+                          <span className="font-semibold text-success">${(analyticsData?.total_amount || 0).toLocaleString()}</span>
                         </div>
                         <div className="flex justify-between border-b pb-2">
                           <span className="text-muted-foreground">Unique Donors</span>
-                          <span className="font-semibold">{reportData?.unique_donors || 0}</span>
+                          <span className="font-semibold">{analyticsData?.unique_donors || 0}</span>
                         </div>
                       </div>
                     </div>
 
-                    {/* Donor Analytics Summary */}
+                    {/* Donor Analytics Summary (Historical trends from stats) */}
                     <div className="rounded-lg border p-6 bg-muted/20">
                       <div className="flex items-center gap-3 mb-6">
                         <TrendingUp className="h-6 w-6 text-primary" />
-                        <h3 className="font-bold text-lg">Donor Trends</h3>
+                        <h3 className="font-bold text-lg">Platform Trends</h3>
                       </div>
                       <div className="space-y-4">
                         {analyticsData?.donation_trends?.map((item: any) => (
@@ -929,35 +878,29 @@ export default function CharityDashboard() {
                     </div>
                   </div>
 
-                  {/* Generated Reports List */}
-                  <div className="mt-6">
-                    <h3 className="font-bold mb-4">Generated Reports History</h3>
-                    <div className="space-y-3">
-                      {allReports.length === 0 ? (
-                        <p className="text-center py-8 text-muted-foreground border border-dashed rounded-lg">No reports generated yet.</p>
-                      ) : allReports.map((report) => (
-                        <div key={report.Report_id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/5 transition-colors">
-                          <div className="flex items-center gap-3">
-                            <div className="p-2 bg-primary/10 rounded-full">
-                              <FileText className="h-4 w-4 text-primary" />
+                  {/* Campaign Breakdown */}
+                  {analyticsData?.campaign_performance && (
+                    <div className="mt-6">
+                      <h3 className="font-bold mb-4 text-lg">Campaign Performance</h3>
+                      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                        {analyticsData.campaign_performance.map((c: any) => (
+                          <div key={c.title} className="p-4 rounded-lg border bg-card">
+                            <p className="text-sm font-medium text-muted-foreground truncate mb-1">{c.title}</p>
+                            <p className="text-xl font-bold text-success">${c.raised.toLocaleString()}</p>
+                            <div className="mt-2 h-1.5 w-full bg-secondary rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-primary"
+                                style={{ width: `${Math.min(100, (c.raised / (c.target || 1)) * 100)}%` }}
+                              />
                             </div>
-                            <div>
-                              <p className="font-medium capitalize">{report.report_type} Report</p>
-                              <p className="text-xs text-muted-foreground">
-                                {new Date(report.Period_start).toLocaleDateString()} - {new Date(report.Period_end).toLocaleDateString()}
-                              </p>
-                            </div>
+                            <p className="text-xs text-muted-foreground mt-2">
+                              {Math.round((c.raised / (c.target || 1)) * 100)}% of goal
+                            </p>
                           </div>
-                          <div className="flex items-center gap-4">
-                            <span className="text-xs text-muted-foreground">Generated {new Date(report.generated_date).toLocaleDateString()}</span>
-                            <Button variant="ghost" size="sm" onClick={() => toast({ title: "Opening", description: "This report detail view is coming soon." })}>
-                              <Eye className="h-4 w-4 mr-1" /> View
-                            </Button>
-                          </div>
-                        </div>
-                      ))}
+                        ))}
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </CardContent>
               </Card>
             </TabsContent>
@@ -965,6 +908,110 @@ export default function CharityDashboard() {
         </div>
       </div>
     </Layout>
+  );
+}
+
+// Generate Report Dialog (Calculates on-the-fly)
+function GenerateReportDialog({ charityId }: { charityId: string }) {
+  const [start, setStart] = useState("");
+  const [end, setEnd] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [reportResult, setReportResult] = useState<any>(null);
+  const { toast } = useToast();
+
+  const handleGenerate = async () => {
+    if (!start || !end) {
+      toast({ title: "Error", description: "Please select start and end dates.", variant: "destructive" });
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const result = await charityApi.getCustomReport(charityId, start, end);
+      if (result.error) throw new Error(result.error);
+      setReportResult((result.data as any).data || result.data);
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <Button size="sm">
+          <FileText className="mr-2 h-4 w-4" />
+          Generate New Report
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Generate Custom Report</DialogTitle>
+          <DialogDescription>Calculate performance for a specific period without database persistence.</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-6 py-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Start Date</Label>
+              <Input type="date" value={start} onChange={(e) => setStart(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>End Date</Label>
+              <Input type="date" value={end} onChange={(e) => setEnd(e.target.value)} />
+            </div>
+          </div>
+
+          <Button onClick={handleGenerate} disabled={isLoading} className="w-full">
+            {isLoading ? "Calculating..." : "Calculate Report Stats"}
+          </Button>
+
+          {reportResult && (
+            <div className="mt-8 space-y-6 animate-in fade-in slide-in-from-top-4 duration-500">
+              <div className="grid grid-cols-3 gap-4">
+                <div className="rounded-lg border p-4 bg-muted/30">
+                  <p className="text-xs text-muted-foreground uppercase font-semibold">Total Raised</p>
+                  <p className="text-xl font-bold text-success">${reportResult.total_amount.toLocaleString()}</p>
+                </div>
+                <div className="rounded-lg border p-4 bg-muted/30">
+                  <p className="text-xs text-muted-foreground uppercase font-semibold">Donations</p>
+                  <p className="text-xl font-bold">{reportResult.total_donations}</p>
+                </div>
+                <div className="rounded-lg border p-4 bg-muted/30">
+                  <p className="text-xs text-muted-foreground uppercase font-semibold">Unique Donors</p>
+                  <p className="text-xl font-bold">{reportResult.unique_donors}</p>
+                </div>
+              </div>
+
+              <div>
+                <h4 className="font-bold mb-3">Campaign Breakdown</h4>
+                <div className="space-y-3">
+                  {reportResult.campaign_breakdown.map((c: any) => (
+                    <div key={c.title} className="flex items-center justify-between p-3 border rounded-lg">
+                      <div>
+                        <p className="font-medium text-sm">{c.title}</p>
+                        <p className="text-xs text-muted-foreground">{c.count} donations</p>
+                      </div>
+                      <p className="font-bold text-success">${c.amount.toLocaleString()}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+        <DialogFooter>
+          {reportResult && (
+            <Button variant="outline" onClick={() => window.print()} className="w-full sm:w-auto">
+              Print Report
+            </Button>
+          )}
+          <DialogClose asChild>
+            <Button variant="ghost">Close</Button>
+          </DialogClose>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -1034,87 +1081,6 @@ function CampaignDonorsDialog({ campaignId, campaignTitle }: { campaignId: strin
             </div>
           )}
         </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-// Generate Report Dialog
-function GenerateReportDialog({ charityId, onSuccess }: { charityId: string, onSuccess: () => void }) {
-  const [type, setType] = useState("monthly");
-  const [start, setStart] = useState("");
-  const [end, setEnd] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-  const { toast } = useToast();
-
-  const handleGenerate = async () => {
-    if (!start || !end) {
-      toast({ title: "Error", description: "Please select start and end dates.", variant: "destructive" });
-      return;
-    }
-
-    setIsLoading(true);
-    try {
-      const result = await reportsApi.generate({
-        charity_id: charityId,
-        report_type: type,
-        period_start: start,
-        period_end: end
-      });
-
-      if (result.error) throw new Error(result.error);
-      toast({ title: "Success", description: "Report generated successfully!" });
-      onSuccess();
-    } catch (error: any) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  return (
-    <Dialog>
-      <DialogTrigger asChild>
-        <Button size="sm">
-          <Plus className="mr-2 h-4 w-4" />
-          Generate New Report
-        </Button>
-      </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Generate Performance Report</DialogTitle>
-          <DialogDescription>Select the period and type of report you want to generate.</DialogDescription>
-        </DialogHeader>
-        <div className="space-y-4 py-4">
-          <div className="space-y-2">
-            <Label>Report Type</Label>
-            <Select value={type} onValueChange={setType}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="monthly">Monthly Summary</SelectItem>
-                <SelectItem value="quarterly">Quarterly Overview</SelectItem>
-                <SelectItem value="annual">Annual Report</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>Start Date</Label>
-              <Input type="date" value={start} onChange={(e) => setStart(e.target.value)} />
-            </div>
-            <div className="space-y-2">
-              <Label>End Date</Label>
-              <Input type="date" value={end} onChange={(e) => setEnd(e.target.value)} />
-            </div>
-          </div>
-        </div>
-        <DialogFooter>
-          <Button onClick={handleGenerate} disabled={isLoading}>
-            {isLoading ? "Generating..." : "Generate Report"}
-          </Button>
-        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

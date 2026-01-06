@@ -66,13 +66,13 @@ class TestCampaignConnectAPI(unittest.TestCase):
         }
         response = requests.post(f"{BASE_URL}/auth/register", json=payload)
         self.assertEqual(response.status_code, 201)
-        self.charity_id = response.json().get("data").get("user").get("Charity_id")
+        self.charity_id = response.json().get("data").get("user").get("charity_id")
 
     def test_06_get_campaigns(self):
         """WD-006: Fetch Campaigns List"""
         response = requests.get(f"{BASE_URL}/campaigns")
         self.assertEqual(response.status_code, 200)
-        self.assertIsInstance(response.json().get("data").get("data"), list)
+        self.assertIsInstance(response.json().get("data"), list)
 
     def test_07_change_password(self):
         """WD-010: Change Password (Verified Hashing)"""
@@ -97,6 +97,43 @@ class TestCampaignConnectAPI(unittest.TestCase):
     # Note: Administrative tests (WD-008, WD-009) and specific creation tests (WD-005, WD-007)
     # usually require JWT or specific status setup which varies by DB state.
     # We implement the core 10 logic flows here.
+
+    def test_08_get_charity_data(self):
+        """WD-013: Fetch Charity Stats/Profile"""
+        # First ensure we have a charity email (from test_05)
+        response = requests.get(f"{BASE_URL}/users/charities")
+        self.assertEqual(response.status_code, 200)
+        charities = response.json().get("data", [])
+        if charities:
+            char_id = charities[0].get("charity_id") or charities[0].get("id")
+            stats_response = requests.get(f"{BASE_URL}/charity/{char_id}/stats")
+            self.assertEqual(stats_response.status_code, 200)
+
+    def test_09_create_campaign_invalid(self):
+        """WD-005 Error case: Create campaign without auth"""
+        payload = {
+            "title": "Unauthorized Campaign",
+            "target_amount": 1000
+        }
+        response = requests.post(f"{BASE_URL}/campaigns", json=payload)
+        # Should fail because charity_id is missing or unauthorized (depending on middleware)
+        self.assertNotEqual(response.status_code, 201)
+
+    def test_10_donation_anonymous(self):
+        """WD-007: Anonymous Donation Flow"""
+        # Find an active campaign
+        camp_res = requests.get(f"{BASE_URL}/campaigns")
+        campaigns = camp_res.json().get("data", [])
+        if campaigns:
+            camp_id = campaigns[0].get("campaign_id")
+            payload = {
+                "campaign_id": camp_id,
+                "donor_id": 1, # Anonymous ID
+                "amount": 10,
+                "payment_method": "credit_card"
+            }
+            response = requests.post(f"{BASE_URL}/donations", json=payload)
+            self.assertEqual(response.status_code, 201)
 
 if __name__ == "__main__":
     unittest.main()

@@ -11,7 +11,7 @@ export const getDonors = async (req, res, next) => {
     let query = supabase.from('donor').select('*', { count: 'exact' });
 
     if (search) {
-      query = query.or(`name.ilike.%${search}%,email.ilike.%${search}%`);
+      query = query.or(`first_name.ilike.%${search}%,last_name.ilike.%${search}%,email.ilike.%${search}%`);
     }
 
     const from = (page - 1) * limit;
@@ -48,14 +48,14 @@ export const getCharities = async (req, res, next) => {
   try {
     const { page = 1, limit = 20, search, is_verified } = req.query;
 
-    let query = supabase.from('Charity').select('*', { count: 'exact' });
+    let query = supabase.from('charity').select('*', { count: 'exact' });
 
     if (search) {
-      query = query.or(`name.ilike.%${search}%,email.ilike.%${search}%`);
+      query = query.or(`first_name.ilike.%${search}%,last_name.ilike.%${search}%,email.ilike.%${search}%`);
     }
 
     if (is_verified !== undefined) {
-      query = query.eq('Verified Status', is_verified === 'true');
+      query = query.eq('verified_status', is_verified === 'true' ? 'verified' : 'pending');
     }
 
     const from = (page - 1) * limit;
@@ -93,9 +93,9 @@ export const getCharityById = async (req, res, next) => {
     const { id } = req.params;
 
     const { data, error } = await supabase
-      .from('Charity')
+      .from('charity')
       .select('*')
-      .eq('Charity_id', id)
+      .eq('charity_id', id)
       .single();
 
     if (error || !data) {
@@ -114,9 +114,9 @@ export const getCharityById = async (req, res, next) => {
 export const getPendingCharities = async (req, res, next) => {
   try {
     const { data, error } = await supabase
-      .from('Charity')
+      .from('charity')
       .select('*')
-      .eq('Verified Status', false)
+      .eq('verified_status', 'pending')
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -137,9 +137,9 @@ export const approveCharity = async (req, res, next) => {
     const { id } = req.params;
 
     const { data, error } = await supabase
-      .from('Charity')
-      .update({ 'Verified Status': true })
-      .eq('Charity_id', id)
+      .from('charity')
+      .update({ verified_status: 'verified' })
+      .eq('charity_id', id)
       .select()
       .single();
 
@@ -150,10 +150,10 @@ export const approveCharity = async (req, res, next) => {
     // Log admin action (safely)
     try {
       await supabase.from('admin_actions').insert({
-        admin_id: req.user?.id || 'system',
+        admin_id: req.user?.id || 1, // Default to 1
         action: 'approve_charity',
         target_id: id,
-        details: { charity_name: data.name }
+        details: { charity_name: `${data.first_name} ${data.last_name}` }
       });
     } catch (e) {
       console.warn('Failed to log admin action:', e.message);
@@ -179,9 +179,9 @@ export const rejectCharity = async (req, res, next) => {
 
     // Get charity info before update
     const { data: charity } = await supabase
-      .from('Charity')
+      .from('charity')
       .select('*')
-      .eq('Charity_id', id)
+      .eq('charity_id', id)
       .single();
 
     if (!charity) {
@@ -190,12 +190,12 @@ export const rejectCharity = async (req, res, next) => {
 
     // Update charity with rejection reason instead of deleting
     const { error } = await supabase
-      .from('Charity')
+      .from('charity')
       .update({
-        'Verified Status': false,
+        verified_status: 'rejected',
         rejection_reason: reason
       })
-      .eq('Charity_id', id);
+      .eq('charity_id', id);
 
     if (error) {
       return errorResponse(res, 'Failed to reject charity', error.message, 400);
@@ -204,10 +204,10 @@ export const rejectCharity = async (req, res, next) => {
     // Log admin action (safely)
     try {
       await supabase.from('admin_actions').insert({
-        admin_id: req.user?.id || 'system',
+        admin_id: req.user?.id || 1,
         action: 'reject_charity',
         target_id: id,
-        details: { charity_name: charity.name, reason }
+        details: { charity_name: `${charity.first_name} ${charity.last_name}`, reason }
       });
     } catch (e) {
       console.warn('Failed to log admin action:', e.message);
@@ -228,9 +228,9 @@ export const reapplyCharity = async (req, res, next) => {
 
     // Get charity info
     const { data: charity } = await supabase
-      .from('Charity')
+      .from('charity')
       .select('*')
-      .eq('Charity_id', id)
+      .eq('charity_id', id)
       .single();
 
     if (!charity) {
@@ -243,12 +243,12 @@ export const reapplyCharity = async (req, res, next) => {
 
     // Clear rejection reason and set back to pending
     const { error } = await supabase
-      .from('Charity')
+      .from('charity')
       .update({
         rejection_reason: null,
-        'Verified Status': false // Pending review
+        verified_status: 'pending' // Pending review
       })
-      .eq('Charity_id', id);
+      .eq('charity_id', id);
 
     if (error) {
       return errorResponse(res, 'Failed to reapply charity', error.message, 400);
@@ -279,9 +279,9 @@ export const getUserById = async (req, res, next) => {
     if (!user) {
       // Try charities
       const result = await supabase
-        .from('Charity')
+        .from('charity')
         .select('*')
-        .eq('Charity_id', id)
+        .eq('charity_id', id)
         .single();
 
       user = result.data;
@@ -311,9 +311,10 @@ export const updateUser = async (req, res, next) => {
     delete updates.donor_id; // Don't allow updating primary key
     delete updates.id;
     delete updates.email; // Email should be updated through auth
-    delete updates.password_hash; // Password should be updated through auth
-    if (req.user.role !== 'admin') {
-      delete updates.is_verified; // Only admins can change this
+    delete updates.password; // Don't allow updating password here
+    delete updates.password_hash;
+    if (req.user?.role !== 'admin') {
+      delete updates.verified_status; // Only admins can change this
     }
 
     // Determine which table to update
@@ -323,8 +324,8 @@ export const updateUser = async (req, res, next) => {
       .eq('donor_id', id)
       .single();
 
-    const tableName = donor ? 'donor' : 'Charity';
-    const idField = donor ? 'donor_id' : 'Charity_id';
+    const tableName = donor ? 'donor' : 'charity';
+    const idField = donor ? 'donor_id' : 'charity_id';
 
     const { data, error } = await supabase
       .from(tableName)
@@ -378,13 +379,12 @@ export const getUserDonations = async (req, res, next) => {
     // Use donor_id for querying donations
     const donorId = req.user?.donor_id || req.user?.profile?.donor_id || id;
     const { data, error } = await supabase
-      .from('Donation')
+      .from('donation')
       .select(`
         *,
-        Campaign:campaign_id (
-          id,
-          title,
-          image
+        campaign:campaign_id (
+          campaign_id,
+          title
         )
       `)
       .eq('donor_id', parseInt(donorId))
@@ -410,10 +410,10 @@ export const getUserCampaigns = async (req, res, next) => {
     // No authentication required - allow updates
 
     const { data, error } = await supabase
-      .from('Campaign')
+      .from('campaign')
       .select('*')
       .eq('charity_id', id)
-      .order('created_at', { ascending: false });
+      .order('start_date', { ascending: false });
 
     if (error) {
       return errorResponse(res, 'Failed to fetch campaigns', error.message, 500);

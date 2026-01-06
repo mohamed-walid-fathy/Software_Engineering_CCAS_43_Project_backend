@@ -20,8 +20,10 @@ interface Campaign {
   target_amount: number;
   current_amount: number;
   category: string;
-  charities?: {
-    name: string;
+  charity?: {
+    first_name?: string;
+    last_name?: string;
+    name?: string;
   };
 }
 
@@ -44,7 +46,7 @@ export default function Donate() {
             id: String(rawData.campaign_id || rawData.id),
             target_amount: parseFloat(rawData.target_amount || rawData.goal_amount || 0),
             current_amount: parseFloat(rawData.current_amount || 0),
-            charities: rawData.Charity || rawData.charities
+            charity: rawData.charity || rawData.Charity || rawData.charities
           });
         }
       } catch (err) {
@@ -114,7 +116,11 @@ export default function Donate() {
                         {campaign.category}
                       </Badge>
                       <h2 className="font-semibold line-clamp-2">{campaign.title}</h2>
-                      <p className="text-sm text-muted-foreground">{campaign.charities?.name || "Verified Charity"}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {campaign.charity?.first_name
+                          ? `${campaign.charity.first_name} ${campaign.charity.last_name || ""}`.trim()
+                          : (campaign.charity?.name || "Verified Charity")}
+                      </p>
                     </div>
                   </div>
                   <div className="mt-6">
