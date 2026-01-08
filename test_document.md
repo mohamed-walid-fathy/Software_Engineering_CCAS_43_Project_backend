@@ -1,20 +1,20 @@
-# Test Document
+# Project Testing Documentation
 
 | Test Case ID | Description | Pre-conditions | Test Data | Steps | Expected Results | Test Type |
 |--------------|-------------|----------------|-----------|-------|------------------|-----------|
-| WD-001 | Donor Registration | Backend running | Email: test@donor.com, Pass: 123456 | "1. Register donor via API" | Account created; password hashed in DB | System Testing (Auto) |
-| WD-002 | Duplicate Email Check | One user already exists | Email: test@donor.com | "1. Attempt registration with duplicate email" | Error: "Email already registered" | System Testing (Auto) |
-| WD-003 | Login Hashed Verification | Account exists with hashed pass | Email: test@donor.com, Pass: 123456 | "1. Login with correct credentials" | Login successful; returns user profile | Integration Testing (Auto) |
-| WD-004 | Login Incorrect Password | Account exists | Email: test@donor.com, Pass: wrong | "1. Login with wrong password" | Error: "Invalid email or password" | Integration Testing (Auto) |
-| WD-005 | Create Campaign | Charity logged in | Title: Help Kids, Goal: 5000 | "1. Submit new campaign" | Campaign created with "pending" status | Functional Testing (Auto) |
-| WD-006 | Fetch Campaigns List | Campaigns exist | N/A | "1. Fetch all campaigns" | Returns list of active/pending campaigns | Functional Testing (Auto) |
-| WD-007 | Create Donation | Campaign active, Donor exists | Amount: 100 | "1. Submit donation to campaign" | Donation record created; campaign progress updated | Functional Testing (Auto) |
-| WD-008 | Admin Approve Campaign | Campaign is "pending" | N/A | "1. Admin approves campaign" | Status changes to "active" | Functional Testing (Auto) |
-| WD-009 | Admin Reject with Reason | Campaign is "pending" | Reason: "Invalid proof" | "1. Admin rejects campaign" | Status: "rejected"; reason saved | Functional Testing (Auto) |
-| WD-010 | Change Password Hashing | User logged in | Old: 123, New: 456 | "1. Change password; 2. Login with new" | Password updated; hashing verified on next login | Security Testing (Auto) |
-| WD-011 | Submit Campaign Missing Fields | Charity logged in | Title empty | "1. Try to create campaign without title" | UI error or API block | Manual Testing |
-| WD-012 | Verify Resubmission Clears Reason | Campaign rejected | Updated desc | "1. Edit rejected campaign; 2. Resubmit" | Status becomes "pending"; reason is null | Manual Testing |
-| WD-013 | Donor views history | Donor made donations | N/A | "1. Navigate to donor dashboard history" | List of previous donations displayed | Manual Testing |
-| WD-014 | Admin Dashboard Stats | Multiple entries exist | N/A | "1. Admin views stats" | Correct counts for pending/active shown | Manual Testing |
-| WD-015 | Logout Security | User logged in | N/A | "1. Click Logout; 2. Try to access dashboard" | Redirect to login; session cleared | Manual Testing |
-| WD-016 | Generate Charity Report | Charity verified | Dates: Jan 1 - Jan 30 | "1. Request report generation" | Report PDF or summary stats generated | Manual Testing |
+| WD-001 | Donor Registration | Backend service running | Email: test@donor.com, Pass: password123 | "1. Submit registration via API/UI" | User account created successfully | System Testing (Pos) |
+| WD-002 | Duplicate Email Registration | User test@donor.com already exists | Email: test@donor.com | "1. Attempt to register again with same email" | Error: "Email already registered" | System Testing (Neg) |
+| WD-003 | Login with Correct Credentials | Registered account exists | Email: test@donor.com, Pass: password123 | "1. Enter credentials in login form; 2. Submit" | Login successful; redirected to dashboard | Integration Testing (Pos) |
+| WD-004 | Login with Incorrect Password | Registered account exists | Email: test@donor.com, Pass: wrongpass | "1. Enter email and wrong password; 2. Submit" | Error: "Invalid email or password" | Integration Testing (Neg) |
+| WD-005 | Campaign List Access | Public or Registered user | N/A | "1. Navigate to campaigns page" | Returns a list of all active campaigns | Functional Testing (Pos) |
+| WD-006 | Create Campaign Unauthorized | User not logged in as Charity | Title: Help Kids | "1. Attempt to POST a new campaign without auth" | Error: 401 Unauthorized or redirected to login | Functional Testing (Neg) |
+| WD-007 | Anonymous Donation | Campaign exists | Amount: 10, Method: Card | "1. Choose campaign; 2. Submit anonymous donation" | Donation recorded; total amount updated | Functional Testing (Pos) |
+| WD-008 | Donation with Invalid Amount | Campaign exists | Amount: -50 | "1. Enter negative amount; 2. Try to pay" | System blocks transaction; Error: "Invalid amount" | Functional Testing (Neg) |
+| WD-009 | Change Password | User logged in | Old: password123, New: newpass123 | "1. Enter old and new password; 2. Save" | Password updated successfully | Security Testing (Pos) |
+| WD-010 | Change Password Wrong Old | User logged in | Old: incorrectpass, New: newpass123 | "1. Enter wrong current password; 2. Save" | Error: "Current password incorrect" | Security Testing (Neg) |
+| WD-011 | Submit Campaign Missing Fields | Charity logged in | Title: "", Goal: 5000 | "1. Try to create campaign without title" | UI displays validation error | Manual Testing |
+| WD-012 | Resubmission Clear Reason | Rejected campaign exists | Updated description | "1. Edit rejected campaign; 2. Resubmit" | Status reset to "pending"; rejection reason cleared | Manual Testing |
+| WD-013 | Donor History View | Donor has previous donations | N/A | "1. Access 'Donation History' tab" | Table displays date, amount, and campaign name | Manual Testing |
+| WD-014 | Admin Stats Validation | Multiple campaigns exist | N/A | "1. Open Admin Dashboard" | Overview shows correct counts for Pending/Active | Manual Testing |
+| WD-015 | Post-Logout Security Check | User was logged in | N/A | "1. Logout; 2. Use 'Back' button or direct URL" | Redirected to Login; no private data visible | Manual Testing |
+| WD-016 | Generate Charity Report | Charity verified | Range: Jan 1 - Jan 31 | "1. Click 'Generate Monthly Report'" | Report exports or displays correct summary data | Manual Testing |

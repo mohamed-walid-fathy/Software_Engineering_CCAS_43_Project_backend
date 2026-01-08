@@ -1375,11 +1375,11 @@ video {
 .grid-cols-2 {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
-.grid-cols-5 {
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-}
 .grid-cols-3 {
   grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.grid-cols-5 {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 .flex-row {
   flex-direction: row;
@@ -2275,14 +2275,14 @@ video {
   --tw-enter-translate-x: initial;
   --tw-enter-translate-y: initial;
 }
+.fade-in {
+  --tw-enter-opacity: 0;
+}
 .fade-in-0 {
   --tw-enter-opacity: 0;
 }
 .fade-in-80 {
   --tw-enter-opacity: 0.8;
-}
-.fade-in {
-  --tw-enter-opacity: 0;
 }
 .zoom-in-95 {
   --tw-enter-scale: .95;
@@ -2427,10 +2427,6 @@ All colors MUST be HSL.
 
 .hover\:bg-muted:hover {
   background-color: hsl(var(--muted));
-}
-
-.hover\:bg-muted\/5:hover {
-  background-color: hsl(var(--muted) / 0.05);
 }
 
 .hover\:bg-muted\/50:hover {
@@ -3404,16 +3400,16 @@ All colors MUST be HSL.
     max-width: 600px;
   }
 
+  .sm\:max-w-\[700px\] {
+    max-width: 700px;
+  }
+
   .sm\:max-w-md {
     max-width: 28rem;
   }
 
   .sm\:max-w-sm {
     max-width: 24rem;
-  }
-
-  .sm\:max-w-\[700px\] {
-    max-width: 700px;
   }
 
   .sm\:grid-cols-2 {
